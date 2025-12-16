@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: planner-ai-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: planner-ai-backend
+  template:
+    metadata:
+      labels:
+        app: planner-ai-backend
+    spec:
+      containers:
+        - name: backend
+          image: planner-ai-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: ENVIRONMENT
+              value: "development"

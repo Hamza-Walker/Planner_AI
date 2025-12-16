@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: planner-ai-backend
+spec:
+  selector:
+    app: planner-ai-backend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: ClusterIP
