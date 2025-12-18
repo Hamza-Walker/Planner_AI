@@ -10,7 +10,7 @@ Planner_AI provides an end-to-end workflow for converting informal user input in
 
 The input is processed by a task extraction component that detects actionable items. These tasks are subsequently categorized (for example, work or personal) and ordered based on priority and contextual information. A scheduling module then assigns tasks to available calendar time slots while respecting predefined routines, availability constraints, and existing calendar events. The resulting schedule is synchronized with the user’s calendar system and presented as a structured daily or weekly plan.
 
-# 3.Sequence diagram for each use case
+# 3. Architecturally significant use cases
 
 ## Use-case 1. – Submit Daily Note
 The user enters daily notes through the web interface and submits them to the system. The web interface forwards the input to the backend API, where basic validation is performed. After successful validation, the notes are accepted for further processing and the user receives a confirmation.
@@ -120,7 +120,7 @@ Integration --> API : Sync result
 @enduml
 
 
-# 4. Class Diagram 
+# 4. Component Diagram
 
 ## Components
 
