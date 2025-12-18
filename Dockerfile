@@ -12,4 +12,4 @@ RUN python -m pip install --upgrade pip \
 
 COPY src/ ./src/
 
-CMD ["uvicorn", "planner_ai.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

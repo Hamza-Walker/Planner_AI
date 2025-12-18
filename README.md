@@ -258,3 +258,165 @@ node "External Services" {
 
 "Calendar Integration Service" --> "External Calendar API"
 @enduml
+
+# 6. Deployment Instructions
+
+## Prerequisites
+
+Before deploying the Planner_AI system, ensure you have the following tools installed:
+
+### Required Tools
+- **Local Kubernetes Cluster**: One of the following:
+  - [Minikube](https://minikube.sigs.k8s.io/docs/start/) (recommended for development)
+  - [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/) (Kubernetes in Docker)
+  - [k3d](https://k3d.io/) (k3s in Docker)
+- **kubectl**: [Kubernetes command-line tool](https://kubernetes.io/docs/tasks/tools/)
+- **Docker**: [Container platform](https://docs.docker.com/get-docker/)
+
+### Verify Installation
+```bash
+# Check kubectl is configured
+kubectl cluster-info
+
+# Check Docker is running
+docker --version
+```
+
+## Deployment Steps
+
+### 1. Start Local Kubernetes Cluster
+
+**For Minikube:**
+```bash
+minikube start
+```
+
+**For Kind:**
+```bash
+kind create cluster --name planner-ai
+```
+
+**For k3d:**
+```bash
+k3d cluster create planner-ai
+```
+
+### 2. Build the Backend Image
+
+Navigate to the project root and build the Docker image in your cluster's context:
+
+**For Minikube:**
+```bash
+# Configure shell to use minikube's Docker daemon
+eval $(minikube docker-env)
+
+# Build the image
+docker build -t planner-ai-backend:latest .
+```
+
+**For Kind:**
+```bash
+# Build the image
+docker build -t planner-ai-backend:latest .
+
+# Load into Kind cluster
+kind load docker-image planner-ai-backend:latest --name planner-ai
+```
+
+**For k3d:**
+```bash
+# Build the image
+docker build -t planner-ai-backend:latest .
+
+# Load into k3d cluster
+k3d image import planner-ai-backend:latest --cluster planner-ai
+```
+
+### 3. Deploy to Kubernetes
+
+Apply the Kubernetes manifests:
+
+```bash
+kubectl apply -f k8s/
+```
+
+Verify the deployment:
+
+```bash
+# Check all resources
+kubectl get deploy,svc,ingress,pods
+
+# Wait for pod to be ready
+kubectl wait --for=condition=ready pod -l app=planner-ai-backend --timeout=300s
+```
+
+### 4. Access the Application
+
+#### Option A: Port Forward (Simplest)
+
+```bash
+# Forward service to local port
+kubectl port-forward svc/planner-ai-backend 8000:80
+```
+
+Then access:
+- **API Docs**: http://localhost:8000/docs
+- **API Root**: http://localhost:8000
+
+#### Option B: Ingress (Production-like)
+
+1. **Enable Ingress Controller** (Minikube only):
+   ```bash
+   minikube addons enable ingress
+   ```
+
+2. **Configure Local DNS**:
+   Add this line to `/etc/hosts` (requires sudo):
+   ```
+   127.0.0.1 planner-ai.local
+   ```
+
+3. **Start Tunnel** (Minikube only):
+   ```bash
+   minikube tunnel
+   ```
+
+4. **Access Application**:
+   - **API Docs**: http://planner-ai.local/docs
+   - **API Root**: http://planner-ai.local
+
+## Troubleshooting
+
+### Pod Not Starting
+```bash
+# Check pod status
+kubectl get pods
+
+# Check pod logs
+kubectl logs -l app=planner-ai-backend
+
+# Describe pod for detailed info
+kubectl describe pod -l app=planner-ai-backend
+```
+
+### Image Pull Issues
+```bash
+# Verify image exists in cluster
+# For Minikube:
+minikube ssh -- docker images | grep planner-ai-backend
+
+# For Kind/k3d: Rebuild and reload image
+docker build -t planner-ai-backend:latest .
+kind load docker-image planner-ai-backend:latest --name planner-ai  # or k3d equivalent
+```
+
+### Clean Up
+```bash
+# Remove application
+kubectl delete -f k8s/
+
+# Stop cluster
+minikube stop          # For Minikube
+kind delete cluster --name planner-ai    # For Kind
+k3d cluster delete planner-ai            # For k3d
+```
