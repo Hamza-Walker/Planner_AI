@@ -423,5 +423,5 @@ k3d cluster delete planner-ai            # For k3d
 
 # 7. Demo Video
 
-[Download Demo Video](docs/demo_video.mov)
+[Download Demo Video](https://github.com/user-attachments/assets/2fe21836-48b3-4905-ba90-8178aa3389ba)
 ```
