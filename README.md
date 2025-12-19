@@ -418,5 +418,5 @@ kubectl delete -f k8s/
 # Stop cluster
 minikube stop          # For Minikube
 kind delete cluster --name planner-ai    # For Kind
-k3d cluster delete planner-ai            # For k3d
+k3d cluster delete planner-ai            # For k3d\n```\n\n# 7. Demo Video\n\n[Download Demo Video](docs/demo_video.mov)\n
 ```
