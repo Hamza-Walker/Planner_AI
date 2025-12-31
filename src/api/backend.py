@@ -1,28 +1,22 @@
 from extraction.task_extractor import TaskExtractor
 from classification.task_classifier import TaskClassifier
-from scheduling.scheduler import Scheduler
 from integration.calendar_integration import CalendarIntegration
+from scheduling.scheduler import Scheduler
 
 
 class BackendAPI:
-    """
-    Central orchestration component of the Planner_AI system.
-    Coordinates task extraction, classification, scheduling,
-    and calendar synchronization.
-    """
+    """Central orchestration component of the Planner_AI system."""
 
-    def submit_notes(self, notes: str) -> dict:
-        """
-        Accepts freeform daily notes and triggers the processing pipeline.
-        """
+    def submit_notes(self, notes: str, llm_tier: str = "large") -> dict:
+        """Accepts freeform daily notes and triggers the processing pipeline."""
 
         # 1. Extract tasks from notes
         extractor = TaskExtractor()
-        tasks = extractor.extract(notes)
+        tasks = extractor.extract(notes, llm_tier=llm_tier)
 
         # 2. Classify and prioritize tasks
         classifier = TaskClassifier()
-        classified_tasks = classifier.classify(tasks)
+        classified_tasks = classifier.classify(tasks, llm_tier=llm_tier)
 
         # 3. Schedule tasks into calendar slots
         scheduler = Scheduler()
@@ -33,6 +27,5 @@ class BackendAPI:
         integration.sync(scheduled_tasks)
 
         return {
-            "status": "success",
-            "tasks_processed": len(scheduled_tasks)
+            "tasks_processed": len(scheduled_tasks),
         }

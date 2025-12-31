@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: price-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: price-simulator
+  template:
+    metadata:
+      labels:
+        app: price-simulator
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8000"
+    spec:
+      containers:
+        - name: price-simulator
+          image: price-simulator:latest
+          # For local clusters (minikube/kind), load the image and avoid registry pulls.
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8000
+      tolerations:
+        - key: "energy-role"
+          operator: "Exists"
+          effect: "NoExecute"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: price-simulator
+spec:
+  selector:
+    app: price-simulator
+  ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP

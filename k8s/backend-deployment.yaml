@@ -11,7 +11,16 @@ spec:
     metadata:
       labels:
         app: planner-ai-backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
     spec:
+      # Tolerations for energy-aware rescheduling
+      # This allows the pod to run on nodes with energy-role taints
+      tolerations:
+        - key: "energy-role"
+          operator: "Exists"
+          effect: "NoExecute"
       containers:
         - name: backend
           image: planner-ai-backend:latest
@@ -21,3 +30,15 @@ spec:
           env:
             - name: ENVIRONMENT
               value: "development"
+            # Optional: enable energy-aware behavior using the exercise 10 price simulator
+            - name: ENERGY_STATUS_URL
+              value: "http://price-simulator:8000/status"
+            - name: ENERGY_PRICE_THRESHOLD_EUR
+              value: "0.70"
+            - name: ENERGY_FAIL_OPEN
+              value: "true"
+            - name: QUEUE_POLL_INTERVAL_S
+              value: "5"
+            # CodeCarbon push gateway URL
+            - name: PROMETHEUS_PUSH_URL
+              value: "http://pushgateway:9091"
