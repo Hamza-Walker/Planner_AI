@@ -15,7 +15,7 @@
 | **Sustainability / Carbon Metrics** | ✅ Complete | 95% |
 | **Carbon-Aware Behavior** | ✅ Complete | 100% |
 | **Auto Redeployment/Routing** | ✅ Complete | 90% |
-| **Core AI Functionality** | ⚠️ Stubbed | 30% |
+| **Core AI Functionality** | 🔄 Partial | 60% |
 
 **Overall Project Completion: ~65%**
 
@@ -123,26 +123,29 @@
 | Use Case | Status | Notes |
 |----------|--------|-------|
 | UC1: Submit Daily Note | ✅ Complete | `/notes` endpoint with energy-aware queue |
-| UC2: Extract Tasks | ⚠️ Stub | LLM client returns empty list |
-| UC3: Classify & Prioritize | ⚠️ Stub | LLM client returns input unchanged |
-| UC4: Schedule Tasks | ⚠️ Stub | Returns tasks unchanged |
-| UC5: Calendar Sync | ⚠️ Stub | Google API setup, no operations |
+| UC2: Extract Tasks | ✅ Complete |LLM-based extraction with JSON validation, normalization and safe fallback|
+| UC3: Classify & Prioritize | ✅ Complete | LLM-based classification (category, priority) with deterministic fallback |
+| UC4: Schedule Tasks | ✅ Complete | Greedy scheduler assigns real time slots using user focus window and routines |
+| UC5: Calendar Sync | 🔄 Implemented (conditional) | Creates/updates Google Calendar events when credentials exist; safe no-op otherwise|
 
 ### Component Implementation
 
-| Component | File | Status |
-|-----------|------|--------|
-| Backend API | `src/api/main.py` | ✅ Complete |
-| Backend Orchestrator | `src/api/backend.py` | ✅ Complete |
-| Energy Policy | `src/energy/policy.py` | ✅ Complete |
-| Price Signal | `src/energy/price_signal.py` | ✅ Complete |
-| Task Extractor | `src/extraction/task_extractor.py` | ⚠️ Stub |
-| Task Classifier | `src/classification/task_classifier.py` | ⚠️ Stub |
-| LLM Client | `src/llm/llm_client.py` | ⚠️ Stub (tier support ready) |
-| Scheduler | `src/scheduling/scheduler.py` | ⚠️ Stub |
-| Preferences Store | `src/storage/preferences_store.py` | ⚠️ Stub |
-| Routine Store | `src/storage/routine_store.py` | ⚠️ Stub |
-| Calendar Integration | `src/integration/calendar_integration.py` | ⚠️ Stub |
+| Component                           | File                                      | Status                      | Notes                                              |
+| ----------------------------------- | ----------------------------------------- | --------------------------- | -------------------------------------------------- |
+| Backend API                         | `src/api/main.py`                         | ✅ Complete                  | FastAPI endpoints + CodeCarbon                     |
+| Backend Orchestrator                | `src/api/backend.py`                      | ✅ Complete                  | UC2→UC5 pipeline orchestration                     |
+| Energy Policy                       | `src/energy/policy.py`                    | ✅ Complete                  | Carbon-aware decisions                             |
+| Price Signal                        | `src/energy/price_signal.py`              | ✅ Complete                  | External signal integration                        |
+| **Models (Single Source of Truth)** | `src/planner_ai/models.py`                | ✅ Complete                  | Pydantic models for tasks, schedules, preferences  |
+| **LLM Client**                      | `src/llm/llm_client.py`                   | ✅ Complete                  | Provider abstraction, JSON guardrails, fallback    |
+| LLM Schemas                         | `src/llm/schemas.py`                      | ✅ Complete                  | Structured extraction & classification schemas     |
+| LLM Providers                       | `src/llm/providers/*`                     | ✅ Complete                  | OpenAI & Ollama via HTTP                           |
+| **Task Extractor**                  | `src/extraction/task_extractor.py`        | ✅ Complete                  | UC2 implemented with validation & normalization    |
+| **Task Classifier**                 | `src/classification/task_classifier.py`   | ✅ Complete                  | UC3 implemented with merge + fallback              |
+| **Scheduler**                       | `src/scheduling/scheduler.py`             | ✅ Complete                  | UC4 implemented (priority, deadline, focus window) |
+| **Preferences Store**               | `src/storage/preferences_store.py`        | ✅ Complete                  | JSON persistence with defaults                     |
+| **Routine Store**                   | `src/storage/routine_store.py`            | ✅ Complete                  | JSON persistence for blocked slots                 |
+| **Calendar Integration**            | `src/integration/calendar_integration.py` | ✅ Implemented (conditional) | UC5 create/update events, safe without creds       |
 
 ---
 
@@ -233,6 +236,19 @@
 4. Grafana → show energy/carbon metrics
 5. CodeCarbon → show emissions tracking
 
+### testing
+The core AI pipeline (UC2–UC5) is covered by automated unit tests:
+
+- Deterministic fake LLM provider for testing extraction and classification
+- JSON guardrail validation tests for LLM output
+- Scheduler tests verifying focus window and blocked slot handling
+- Calendar integration tested as safe no-op and with mocked Google API
+
+Tests are executable locally and in CI without external dependencies.
+
+Suggested command:
+PYTHONPATH=src pytest -q
+
 ---
 
 ## Files Summary
@@ -247,13 +263,18 @@
 ├── 10-redeploy-adapt/           (energy scheduling system)
 ├── README.md                    (UML diagrams, deployment docs)
 
-⚠️ STUBBED (architecture ready, logic not implemented)
-├── src/llm/llm_client.py        (tier support, no API calls)
-├── src/extraction/              (calls stub)
-├── src/classification/          (calls stub)
-├── src/scheduling/              (returns unchanged)
-├── src/storage/                 (returns empty)
-├── src/integration/             (Google API setup only)
+✅ CORE AI IMPLEMENTED
+├── src/planner_ai/models.py      (Pydantic data model layer)
+├── src/llm/llm_client.py         (LLM provider + JSON guardrails)
+├── src/llm/schemas.py            (structured AI outputs)
+├── src/llm/providers/            (OpenAI / Ollama)
+├── src/extraction/task_extractor.py
+├── src/classification/task_classifier.py
+├── src/scheduling/scheduler.py
+├── src/storage/preferences_store.py
+├── src/storage/routine_store.py
+├── src/integration/calendar_integration.py
+├── tests/                        (UC2–UC5 unit tests)
 
 ❌ MISSING
 ├── .github/workflows/           (CI/CD)

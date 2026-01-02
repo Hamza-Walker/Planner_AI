@@ -5,6 +5,7 @@ import signal
 import time
 from dataclasses import asdict
 from typing import Optional
+from dotenv import load_dotenv
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -29,7 +30,7 @@ tracker = EmissionsTracker(
     prometheus_url=PROMETHEUS_PUSH_URL,
     log_level="error"
 )
-
+load_dotenv()
 app = FastAPI()
 backend = BackendAPI()
 
