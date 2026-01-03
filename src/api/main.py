@@ -144,3 +144,13 @@ async def queue_status() -> dict:
         "llm_tier": policy.llm_tier(status),
         "energy": _serialize_status(status),
     }
+
+
+@app.get("/health")
+async def health_check() -> dict:
+    """Health check endpoint for container orchestration."""
+    return {
+        "status": "healthy",
+        "profile": os.getenv("DEPLOYMENT_PROFILE", "unknown"),
+        "queue_size": notes_queue.qsize(),
+    }

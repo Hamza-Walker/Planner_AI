@@ -1,0 +1,49 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv/
+ENV/
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov/
+test/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# Local config
+.env
+*.local
+
+# Exercise folders (not needed in container)
+10-redeploy-adapt/
+11-summary/
+class_notes/
+project_description/
+
+# Other
+.DS_Store
+*.log
