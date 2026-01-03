@@ -10,14 +10,16 @@
 | Requirement Category | Status | Score |
 |---------------------|--------|-------|
 | **Architecture (ADRs, UML)** | ✅ Complete | 100% |
-| **CI/CD Pipeline** | ❌ Not Implemented | 0% |
+| **CI/CD Pipeline** | ✅ Complete | 100% |
 | **Observability & Monitoring** | 🔄 Partial | 60% |
 | **Sustainability / Carbon Metrics** | ✅ Complete | 95% |
 | **Carbon-Aware Behavior** | ✅ Complete | 100% |
 | **Auto Redeployment/Routing** | ✅ Complete | 90% |
-| **Core AI Functionality** | 🔄 Partial | 60% |
+| **Core AI Functionality** | ✅ Complete | 90% |
 
-**Overall Project Completion: ~65%**
+**Overall Project Completion: ~90%**
+
+**CI/CD Pipeline:** [GitHub Actions](https://github.com/Hamza-Walker/Planner_AI/actions)
 
 ---
 
@@ -40,18 +42,23 @@
 | Component Diagram | ✅ | `README.md` + `docs/ClassDiag.png` |
 | Deployment Diagram | ✅ | `README.md` + `docs/DeploymentDiag.png` |
 
-### 3. CI/CD Pipeline ❌ NOT IMPLEMENTED
+### 3. CI/CD Pipeline ✅ COMPLETE
 | Item | Status | Notes |
 |------|--------|-------|
-| Automated testing | ❌ | No test files found |
-| Automated building | ❌ | No CI/CD config (GitHub Actions, etc.) |
-| Automated deployment | ❌ | Manual kubectl apply only |
-| Two deployment profiles | 🔄 | Helm chart exists but no CI/CD integration |
+| Automated testing | ✅ | pytest runs on every push/PR |
+| Automated building | ✅ | Docker images built and pushed to ghcr.io |
+| Automated deployment | ✅ | Two deployment profiles available |
+| Two deployment profiles | ✅ | `Dockerfile` (eco) + `Dockerfile.fast` (fast) |
+| Security scanning | ✅ | Trivy vulnerability scanning |
+| Linting | ✅ | Ruff linter integrated |
 
-**Action Required:**
-- Create `.github/workflows/ci.yml` for GitHub Actions
-- Add unit tests for components
-- Create deployment profiles (eco/fast)
+**Pipeline URL:** https://github.com/Hamza-Walker/Planner_AI/actions
+
+**Deployment Profiles:**
+| Profile | Dockerfile | Model Tier | Price Threshold | Use Case |
+|---------|------------|------------|-----------------|----------|
+| eco | `Dockerfile` | Small (gpt-3.5-turbo) | €0.50 | High carbon intensity |
+| fast | `Dockerfile.fast` | Large (gpt-4) | €0.90 | Low carbon intensity |
 
 ### 4. Observability & Monitoring Dashboards 🔄 PARTIAL
 | Item | Status | Location |
@@ -164,39 +171,20 @@
 
 ## Priority Action Items
 
-### 🔴 Critical (Before Presentation)
+### � Important (Improves Demo)
 
-1. **CI/CD Pipeline** - Required by project spec
-   - Create `.github/workflows/ci.yml`
-   - Add basic unit tests
-   - Two deployment profiles (eco/fast)
-
-2. **LLM Integration** - Core AI functionality
-   - Implement actual API calls in `llm_client.py`
-   - Options: Ollama, OpenAI, Groq, local models
-
-3. **Custom Grafana Dashboard**
+1. **Custom Grafana Dashboard**
    - Create dashboard for Planner_AI metrics
    - Show energy metrics, queue depth, model tier usage
 
-### 🟡 Important (Improves Demo)
-
-4. **Basic Scheduling Logic**
-   - Implement time slot allocation
-   - Add conflict detection
-
-5. **Storage Implementation**
-   - JSON file storage for preferences/routines
-
-6. **SLO Definition & Metrics**
+2. **SLO Definition & Metrics**
    - Define latency targets
    - Add Prometheus metrics for tracking
 
 ### 🟢 Nice to Have
 
-7. **Web UI** - Currently API only
-8. **Google Calendar Integration** - Full OAuth flow
-9. **Additional Tests** - Integration tests
+3. **Web UI** - Currently API only
+4. **Google Calendar Integration** - Full OAuth flow
 
 ---
 
@@ -204,14 +192,10 @@
 
 | Task | Effort | Priority |
 |------|--------|----------|
-| CI/CD Pipeline | 2-4 hours | 🔴 Critical |
-| LLM Integration | 4-8 hours | 🔴 Critical |
-| Grafana Dashboard | 2-3 hours | 🔴 Critical |
-| Scheduling Logic | 4-6 hours | 🟡 Important |
-| Storage Implementation | 2-3 hours | 🟡 Important |
+| Grafana Dashboard | 2-3 hours | 🟡 Important |
 | SLO Metrics | 2-3 hours | 🟡 Important |
-| **Minimum Viable** | **10-18 hours** | - |
-| **Full Implementation** | **20-35 hours** | - |
+| Web UI | 4-8 hours | 🟢 Nice to Have |
+| **Remaining Work** | **8-14 hours** | - |
 
 ---
 
@@ -223,11 +207,10 @@
 3. **Automatic redeployment** - Taint-based rescheduling with Helm
 4. **Well-documented architecture** - UML diagrams, component separation
 5. **Modular design** - Clean separation of concerns
+6. **Full CI/CD pipeline** - Automated testing, building, two deployment profiles
 
 ### Areas to Address 🔄
-1. **CI/CD** - Need to implement before presentation
-2. **LLM is stubbed** - Acknowledge, focus on architecture readiness
-3. **Custom dashboards** - Need to create for demo
+1. **Custom dashboards** - Need to create for demo
 
 ### Key Demo Scenarios
 1. Submit notes → show energy-aware queue behavior
@@ -274,12 +257,16 @@ PYTHONPATH=src pytest -q
 ├── src/storage/preferences_store.py
 ├── src/storage/routine_store.py
 ├── src/integration/calendar_integration.py
-├── tests/                        (UC2–UC5 unit tests)
 
-❌ MISSING
-├── .github/workflows/           (CI/CD)
-├── tests/                       (unit tests)
-├── grafana/dashboards/          (custom dashboards)
+✅ CI/CD & TESTING
+├── .github/workflows/ci.yml      (GitHub Actions pipeline)
+├── Dockerfile                    (eco profile)
+├── Dockerfile.fast               (fast profile)
+├── pytest.ini                    (test configuration)
+├── test/                         (UC2–UC5 unit tests)
+
+🔄 OPTIONAL
+├── grafana/dashboards/          (custom dashboards - not created)
 ```
 
 ---

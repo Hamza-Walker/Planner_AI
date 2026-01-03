@@ -31,4 +31,4 @@ class Task(BaseModel):
 class ScheduledTask(Task):
     start_time: datetime
     end_time: datetime
-    calendar_event_id: Optiona
+    calendar_event_id: Optional[str] = None
