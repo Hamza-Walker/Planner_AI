@@ -20,6 +20,7 @@ If unsure, return {"tasks": []}.
 """.strip()
 
 
+
 def _extract_json(text: str) -> str:
     """
     Robust-ish: tries to extract a JSON object from model output.
@@ -55,7 +56,14 @@ class LLMClient:
         # fallback "no-llm" mode
         raise RuntimeError(f"Unknown LLM_PROVIDER: {name}")
 
-    # ---------- UC2: Extract Tasks ----------
+    
+    def complete(self, note_text: str) -> str:
+            """
+            Backwards-compatible API used by unit tests and older components.
+            Returns JSON string: {"tasks":[...]}.
+            """
+            tasks = self.extract_tasks(note_text)  # list[dict[str, Any]]
+            return json.dumps({"tasks": tasks}, ensure_ascii=False)
 
     def extract_tasks(self, note_text: str) -> list[dict[str, Any]]:
         """
@@ -98,7 +106,6 @@ NOTE TEXT:
             # safe fallback: no tasks
             return []
 
-    # ---------- UC3: Classify & Prioritize ----------
 
     def classify_tasks(self, tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
