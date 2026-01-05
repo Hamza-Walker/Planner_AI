@@ -119,7 +119,6 @@ ExternalCalendar --> Integration : Confirmation
 Integration --> API : Sync result
 @enduml
 
-
 # 4. Component Diagram
 
 ## Components
