@@ -3,11 +3,14 @@ import logging
 import os
 import signal
 import time
+from collections import deque
 from dataclasses import asdict
-from typing import Optional
+from datetime import datetime
+from typing import Optional, List
 from dotenv import load_dotenv
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from codecarbon import EmissionsTracker
 
@@ -31,8 +34,25 @@ tracker = EmissionsTracker(
     log_level="error"
 )
 load_dotenv()
-app = FastAPI()
+app = FastAPI(title="Planner AI", version="0.8.0")
+
+# CORS middleware for Next.js frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",  # Next.js dev server
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 backend = BackendAPI()
+
+# In-memory store for recent tasks and schedules (last 50)
+recent_tasks: deque = deque(maxlen=50)
+recent_schedules: dict = {}  # date_str -> schedule
 
 
 class NotesIn(BaseModel):
@@ -119,6 +139,16 @@ async def submit_notes(payload: NotesIn) -> dict:
 
     if policy.should_process_now(status):
         result = await _process_notes(payload.notes, llm_tier=llm_tier)
+        
+        # Store tasks and schedule for later retrieval
+        if "tasks" in result and result["tasks"]:
+            for task in result["tasks"]:
+                task["created_at"] = datetime.now().isoformat()
+                recent_tasks.appendleft(task)
+        if "schedule" in result and result["schedule"]:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            recent_schedules[date_str] = result["schedule"]
+        
         return {
             "status": "processed",
             "llm_tier": llm_tier,
@@ -154,3 +184,62 @@ async def health_check() -> dict:
         "profile": os.getenv("DEPLOYMENT_PROFILE", "unknown"),
         "queue_size": notes_queue.qsize(),
     }
+
+
+@app.get("/tasks")
+async def get_tasks(limit: int = 20) -> dict:
+    """Get recent extracted tasks."""
+    tasks_list = list(recent_tasks)[:limit]
+    return {
+        "tasks": tasks_list,
+        "total": len(recent_tasks),
+    }
+
+
+@app.get("/schedule/{date}")
+async def get_schedule(date: str) -> dict:
+    """Get schedule for a specific date (YYYY-MM-DD)."""
+    schedule = recent_schedules.get(date, {})
+    return {
+        "date": date,
+        "schedule": schedule,
+    }
+
+
+@app.get("/schedule")
+async def get_today_schedule() -> dict:
+    """Get today's schedule."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    schedule = recent_schedules.get(today, {})
+    return {
+        "date": today,
+        "schedule": schedule,
+    }
+
+
+@app.get("/metrics/carbon")
+async def get_carbon_metrics() -> dict:
+    """Get carbon emissions metrics from CodeCarbon."""
+    try:
+        # Get current emissions data from tracker
+        emissions = tracker._emissions if hasattr(tracker, '_emissions') else 0.0
+        energy = tracker._total_energy.kWh if hasattr(tracker, '_total_energy') else 0.0
+        duration = tracker._total_duration if hasattr(tracker, '_total_duration') else 0.0
+        
+        return {
+            "emissions_kg": emissions,
+            "emissions_g": emissions * 1000,
+            "energy_kwh": energy,
+            "duration_seconds": duration,
+            "project_name": "planner-ai-backend",
+        }
+    except Exception as e:
+        logger.warning(f"Could not retrieve carbon metrics: {e}")
+        return {
+            "emissions_kg": 0.0,
+            "emissions_g": 0.0,
+            "energy_kwh": 0.0,
+            "duration_seconds": 0.0,
+            "project_name": "planner-ai-backend",
+            "error": str(e),
+        }
