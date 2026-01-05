@@ -30,12 +30,11 @@ class PreferencesStore:
             return UserPreferences()
 
     def save(self, prefs: UserPreferences) -> None:
-        """
-        Save user preferences to disk.
-        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
+
+        data = prefs.model_dump(mode="json")
+
         self.path.write_text(
-            prefs.model_dump_json(ensure_ascii=False, indent=2),
+            json.dumps(data, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-

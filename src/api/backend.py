@@ -27,5 +27,7 @@ class BackendAPI:
         integration.sync(scheduled_tasks)
 
         return {
+            "tasks": [t.model_dump() for t in classified_tasks],
+            "schedule": [s.model_dump() for s in scheduled_tasks],
             "tasks_processed": len(scheduled_tasks),
         }
