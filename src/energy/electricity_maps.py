@@ -39,6 +39,19 @@ def fetch_from_electricity_maps(config: ElectricityMapsConfig) -> Optional[dict]
         data = response.json()
 
         carbon_intensity = data.get("carbonIntensity")
+        
+        # If carbon intensity is missing from breakdown, try specific endpoint
+        if carbon_intensity is None:
+            try:
+                url_carbon = f"{config.base_url}/carbon-intensity/latest"
+                resp_carbon = requests.get(url_carbon, headers=headers, params=params, timeout=5.0)
+                if resp_carbon.ok:
+                    carbon_data = resp_carbon.json()
+                    carbon_intensity = carbon_data.get("carbonIntensity")
+                    logger.info(f"Fetched carbon intensity from dedicated endpoint: {carbon_intensity}")
+            except Exception as e_carbon:
+                logger.warning(f"Failed to fetch fallback carbon intensity: {e_carbon}")
+
         renewable_percentage = data.get("renewablePercentage")
 
         # Determine if solar is active (this is a heuristic)
