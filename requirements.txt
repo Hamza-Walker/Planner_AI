@@ -11,3 +11,4 @@ google-auth
 google-auth-oauthlib
 google-auth-httplib2
 prometheus-client>=0.20.0
+asyncpg>=0.29.0
