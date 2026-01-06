@@ -31,11 +31,12 @@ export function EnergyStatus() {
     );
   }
 
-  const price = data?.energy?.price_eur ?? 0;
+  const price = data?.energy?.electricity_price_eur ?? 0;
   const solarAvailable = data?.energy?.solar_available ?? false;
   const modelTier = data?.llm_tier ?? 'small';
   const queueSize = data?.queue_size ?? 0;
   const processNow = data?.process_now ?? false;
+  const energySource = (data?.energy as any)?.source ?? 'unknown';
 
   // Price percentage (assume max €1.50)
   const pricePercent = Math.min((price / 1.5) * 100, 100);
@@ -110,6 +111,18 @@ export function EnergyStatus() {
             processNow ? 'text-green-600' : 'text-orange-600'
           }`}>
             {processNow ? '✅ Processing Now' : '⏸️ Queuing Tasks'}
+          </span>
+        </div>
+
+        {/* Data Source */}
+        <div className="flex items-center justify-between text-xs text-gray-400">
+          <span>Data Source</span>
+          <span className={`px-2 py-0.5 rounded ${
+            energySource === 'electricity_maps' 
+              ? 'bg-green-100 text-green-700' 
+              : 'bg-gray-100 text-gray-600'
+          }`}>
+            {energySource === 'electricity_maps' ? '🌍 Electricity Maps' : '🔌 Local Simulator'}
           </span>
         </div>
       </div>

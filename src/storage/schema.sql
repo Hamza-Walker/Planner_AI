@@ -4,14 +4,18 @@
 -- Enable UUID extension for unique IDs
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Queue item status enum
-CREATE TYPE queue_status AS ENUM (
-    'pending',      -- Waiting to be processed
-    'processing',   -- Currently being processed by a worker
-    'completed',    -- Successfully processed
-    'failed',       -- Processing failed (will retry if attempts < max)
-    'dead'          -- Exceeded max retry attempts, moved to dead letter
-);
+-- Queue item status enum (skip if already exists)
+DO $$ BEGIN
+    CREATE TYPE queue_status AS ENUM (
+        'pending',      -- Waiting to be processed
+        'processing',   -- Currently being processed by a worker
+        'completed',    -- Successfully processed
+        'failed',       -- Processing failed (will retry if attempts < max)
+        'dead'          -- Exceeded max retry attempts, moved to dead letter
+    );
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- Main queue table
 CREATE TABLE IF NOT EXISTS queue_items (

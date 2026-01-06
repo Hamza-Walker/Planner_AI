@@ -24,9 +24,10 @@ export interface Schedule {
 }
 
 export interface EnergyStatus {
-  price_eur: number;
+  electricity_price_eur: number;
   solar_available: boolean;
-  timestamp: string;
+  fetched_at_unix_s: number;
+  source?: string;
 }
 
 export interface QueueStatus {
@@ -36,10 +37,27 @@ export interface QueueStatus {
   energy: EnergyStatus | null;
 }
 
+export interface QueueItem {
+  id: string;
+  notes: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'dead';
+  attempts: number;
+  max_attempts: number;
+  last_error?: string | null;
+  created_at?: string;
+  completed_at?: string;
+}
+
+export interface QueueItemsResponse {
+  items: QueueItem[];
+  count: number;
+}
+
 export interface NotesResponse {
   status: 'processed' | 'queued';
   llm_tier: 'large' | 'small';
   queue_size?: number;
+  queue_item_id?: string;
   energy: EnergyStatus | null;
   tasks?: Task[];
   schedule?: Schedule;

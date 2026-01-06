@@ -7,6 +7,7 @@ import type {
   ScheduleResponse,
   HealthResponse,
   CarbonMetrics,
+  QueueItemsResponse,
 } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -45,6 +46,11 @@ export async function submitNotes(notes: string): Promise<NotesResponse> {
 // GET /queue - Get queue status and energy info
 export async function getQueueStatus(): Promise<QueueStatus> {
   return fetchApi<QueueStatus>('/queue');
+}
+
+// GET /queue/items - Get recent queue items
+export async function getQueueItems(limit: number = 20): Promise<QueueItemsResponse> {
+  return fetchApi<QueueItemsResponse>(`/queue/items?limit=${limit}`);
 }
 
 // GET /tasks - Get recent extracted tasks

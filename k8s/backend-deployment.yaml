@@ -45,7 +45,10 @@ spec:
             - name: ENERGY_FAIL_OPEN
               value: "true"
             - name: QUEUE_POLL_INTERVAL_S
-              value: "5"
+              value: "1"
+            # Electricity Maps API Key (Optional)
+            - name: ELECTRICITY_MAPS_API_KEY
+              value: "6BANkzBnWcNDkA7lrT3n"
             # CodeCarbon push gateway URL
             - name: PROMETHEUS_PUSH_URL
               value: "http://pushgateway:9091"

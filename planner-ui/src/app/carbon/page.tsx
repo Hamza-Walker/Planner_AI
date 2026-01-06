@@ -28,7 +28,7 @@ export default function CarbonPage() {
   const duration = carbonData?.duration_seconds ?? 0;
   const profile = healthData?.profile ?? 'unknown';
   const modelTier = queueData?.llm_tier ?? 'small';
-  const price = queueData?.energy?.price_eur ?? 0;
+  const price = queueData?.energy?.electricity_price_eur ?? 0;
 
   // Calculate estimated savings (assume large model uses 3x more energy)
   const estimatedSavingsPercent = modelTier === 'small' ? 66 : 0;
