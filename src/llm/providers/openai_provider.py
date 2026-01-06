@@ -12,19 +12,19 @@ class OpenAIProvider(LLMProvider):
         if not self.api_key:
             raise RuntimeError("OPENAI_API_KEY is missing")
 
-    def generate(self, *, system: str, user: str) -> str:
+    def generate(self, *, system: str, user: str, model: str | None = None) -> str:
         url = f"{self.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
         payload = {
-            "model": self.model,
-            "temperature": 0.2,
+            "model": model or self.model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
+            "temperature": 0.2,
         }
 
         with httpx.Client(timeout=30.0) as client:

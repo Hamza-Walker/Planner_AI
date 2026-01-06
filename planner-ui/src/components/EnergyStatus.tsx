@@ -90,7 +90,7 @@ export function EnergyStatus() {
               ? 'bg-blue-100 text-blue-700' 
               : 'bg-green-100 text-green-700'
           }`}>
-            {modelTier === 'large' ? '🚀 Large (GPT-4)' : '🌱 Small (GPT-3.5)'}
+            {modelTier === 'large' ? '🚀 Large (Llama 3.2)' : '🌱 Small (Llama 3.2)'}
           </span>
         </div>
 

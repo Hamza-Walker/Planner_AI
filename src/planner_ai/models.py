@@ -13,6 +13,11 @@ class Task(BaseModel):
     estimated_duration_min: int = Field(30, ge=1)
 
     deadline: Optional[datetime] = None
+    
+    fixed_time: Optional[str] = Field(
+        default=None,
+        description="Fixed start time in HH:MM format if specified"
+    )
 
     @field_validator("title")
     @classmethod

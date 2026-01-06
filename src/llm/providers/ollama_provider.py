@@ -8,10 +8,10 @@ class OllamaProvider(LLMProvider):
         self.model = os.getenv("OLLAMA_MODEL", "llama3.1").strip()
         self.base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip()
 
-    def generate(self, *, system: str, user: str) -> str:
+    def generate(self, *, system: str, user: str, model: str | None = None) -> str:
         url = f"{self.base_url}/api/chat"
         payload = {
-            "model": self.model,
+            "model": model or self.model,
             "stream": False,
             "messages": [
                 {"role": "system", "content": system},

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import os
+import re
 from typing import Any, Optional
 
 from pydantic import ValidationError
@@ -11,11 +12,17 @@ from llm.schemas import (
 )
 from llm.providers.openai_provider import OpenAIProvider
 from llm.providers.ollama_provider import OllamaProvider
+from llm.providers.mock_provider import MockProvider
 from llm.providers.base import LLMProvider
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 JSON_ONLY_RULES = """
 Return ONLY valid JSON. No markdown. No commentary. No code fences.
+Do NOT use trailing commas. Do NOT use comments inside the JSON (like // or /* */).
 If unsure, return {"tasks": []}.
 """.strip()
 
@@ -26,6 +33,9 @@ def _extract_json(text: str) -> str:
     Robust-ish: tries to extract a JSON object from model output.
     Works even if model adds some stray text.
     """
+    # Remove C-style comments //...
+    text = re.sub(r'//.*$', '', text, flags=re.MULTILINE)
+
     text = text.strip()
 
     # already JSON
@@ -45,6 +55,8 @@ def _extract_json(text: str) -> str:
 class LLMClient:
     def __init__(self, provider: Optional[LLMProvider] = None):
         self.provider = provider or self._build_provider()
+        self.large_model = os.getenv("LLM_MODEL_LARGE", "llama3.1").strip()
+        self.small_model = os.getenv("LLM_MODEL_SMALL", "llama3.2:1b").strip()
 
     def _build_provider(self) -> LLMProvider:
         name = os.getenv("LLM_PROVIDER", "openai").strip().lower()
@@ -65,7 +77,7 @@ class LLMClient:
             tasks = self.extract_tasks(note_text)  # list[dict[str, Any]]
             return json.dumps({"tasks": tasks}, ensure_ascii=False)
 
-    def extract_tasks(self, note_text: str) -> list[dict[str, Any]]:
+    def extract_tasks(self, note_text: str, llm_tier: str = "large") -> list[dict[str, Any]]:
         """
         Returns list of task dicts compatible with Task(**dict) in your extractor.
         (We return dicts here to keep your existing UC2 stub integration easy.)
@@ -77,12 +89,13 @@ Extract tasks from this note.
 
 Return JSON with schema:
 {{
-  "tasks": [
+    "tasks": [
     {{
       "title": "string",
       "description": "string | null",
       "estimated_duration_min": 30,
-      "deadline": "ISO-8601 datetime | null"
+      "deadline": "ISO-8601 datetime | null",
+      "fixed_time": "HH:MM | null"
     }}
   ]
 }}
@@ -90,6 +103,7 @@ Return JSON with schema:
 NOTE:
 - If duration unknown, set 30.
 - deadline can be null.
+- fixed_time should be "HH:MM" (24h) if a specific time is mentioned (e.g. "at 21:30" -> "21:30").
 - title must be concise.
 - Only include actionable tasks.
 
@@ -97,17 +111,21 @@ NOTE TEXT:
 {note_text}
 """.strip()
 
+        model_name = self.large_model if llm_tier == "large" else self.small_model
+        # logger.info(f"Using model: {model_name} for tier: {llm_tier}")
+
         try:
-            raw = self.provider.generate(system=system, user=user)
+            raw = self.provider.generate(system=system, user=user, model=model_name)
             json_text = _extract_json(raw)
             parsed = TaskExtractionResult.model_validate_json(json_text)
             return [t.model_dump() for t in parsed.tasks]
-        except (ValidationError, json.JSONDecodeError, Exception):
+        except (ValidationError, json.JSONDecodeError, Exception) as e:
+            logger.error(f"Error extracting tasks: {e}. Raw output: {raw if 'raw' in locals() else 'N/A'}")
             # safe fallback: no tasks
             return []
 
 
-    def classify_tasks(self, tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def classify_tasks(self, tasks: list[dict[str, Any]], llm_tier: str = "large") -> list[dict[str, Any]]:
         """
         Input: task dicts (title, description, duration, deadline)
         Output: task dicts + category + priority
@@ -136,11 +154,13 @@ Rules:
 - if unclear, category="other", priority=3
 
 TASKS:
-{json.dumps(tasks, ensure_ascii=False)}
+{json.dumps(tasks, ensure_ascii=False, default=str)}
 """.strip()
+        
+        model_name = self.large_model if llm_tier == "large" else self.small_model
 
         try:
-            raw = self.provider.generate(system=system, user=user)
+            raw = self.provider.generate(system=system, user=user, model=model_name)
             json_text = _extract_json(raw)
             parsed = TaskClassificationResult.model_validate_json(json_text)
             return [t.model_dump() for t in parsed.tasks]

@@ -37,6 +37,9 @@ spec:
   selector:
     app: price-simulator
   ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
     - port: 8000
       targetPort: 8000
       protocol: TCP
