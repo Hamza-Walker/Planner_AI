@@ -3,7 +3,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { getTodaySchedule, getTasks } from '@/lib/api';
 import { CATEGORY_ICONS } from '@/lib/types';
-import { Calendar, Clock } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, XCircle, LogOut } from 'lucide-react';
+import { useEffect } from 'react';
 
 const categoryColors: Record<string, string> = {
   work: 'bg-blue-500 border-blue-600',
@@ -27,6 +28,39 @@ export default function CalendarPage() {
     queryFn: () => getTasks(20),
     refetchInterval: 10000,
   });
+
+  // Google Calendar Status
+  const { data: authStatus, refetch: refetchAuth } = useQuery({
+    queryKey: ['googleAuthStatus'],
+    queryFn: async () => {
+      const res = await fetch('http://localhost:8000/auth/google/status');
+      if (!res.ok) return { connected: false };
+      return res.json();
+    },
+  });
+
+  // Handle OAuth callback params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('success') === 'true') {
+      // Clear params to look clean
+      window.history.replaceState({}, '', window.location.pathname);
+      refetchAuth();
+      alert('Successfully connected to Google Calendar!');
+    } else if (params.get('error')) {
+      alert(`Failed to connect: ${params.get('error')}`);
+    }
+  }, [refetchAuth]);
+
+  const handleDisconnect = async () => {
+    if (!confirm('Are you sure you want to disconnect Google Calendar?')) return;
+    try {
+      await fetch('http://localhost:8000/auth/google/disconnect', { method: 'POST' });
+      refetchAuth();
+    } catch (e) {
+      alert('Failed to disconnect');
+    }
+  };
 
   const isLoading = scheduleLoading || tasksLoading;
 
@@ -56,7 +90,32 @@ export default function CalendarPage() {
             Today&apos;s schedule: {scheduleData?.date || 'Loading...'}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {/* Google Calendar Connection Status */}
+          <div className="mr-4">
+            {authStatus?.connected ? (
+              <div className="flex items-center text-sm text-green-700 bg-green-50 px-3 py-1 rounded-full border border-green-200">
+                <CheckCircle className="w-4 h-4 mr-2" />
+                <span className="mr-2">Connected as {authStatus.email}</span>
+                <button 
+                  onClick={handleDisconnect}
+                  className="text-red-600 hover:text-red-800 ml-2 border-l border-green-200 pl-2"
+                  title="Disconnect"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <a
+                href="http://localhost:8000/auth/google/login"
+                className="flex items-center text-sm text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-200 hover:bg-blue-100 transition-colors"
+              >
+                <Calendar className="w-4 h-4 mr-2" />
+                Connect Google Calendar
+              </a>
+            )}
+          </div>
+
           {Object.entries(categoryColors).map(([category, color]) => (
             <span key={category} className="flex items-center text-xs text-gray-600">
               <span className={`w-3 h-3 rounded mr-1 ${color}`}></span>

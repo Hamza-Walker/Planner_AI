@@ -10,7 +10,13 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Optional, List
 from dotenv import load_dotenv
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import (
+    Counter,
+    Histogram,
+    Gauge,
+    generate_latest,
+    CONTENT_TYPE_LATEST,
+)
 from fastapi import Response
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,16 +24,19 @@ from pydantic import BaseModel
 from codecarbon import EmissionsTracker
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from fastapi import Response
+from google_auth_oauthlib.flow import Flow
 from api.backend import BackendAPI
 from energy.policy import EnergyPolicy
 from energy.price_signal import EnergyStatus, fetch_energy_status
 from storage import db
 from storage.durable_queue import DurableQueue
+from storage.google_auth import GoogleAuthStore
+from integration.calendar_integration import CalendarIntegration
+from planner_ai.models import ScheduledTask
 
 # Logging configuration
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -37,9 +46,25 @@ tracker = EmissionsTracker(
     project_name="planner-ai-backend",
     save_to_prometheus=bool(PROMETHEUS_PUSH_URL),
     prometheus_url=PROMETHEUS_PUSH_URL or "http://localhost:9091",
-    log_level="error"
+    log_level="error",
 )
 load_dotenv()
+
+# Google Auth Configuration
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = os.getenv(
+    "GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback"
+)
+# Scopes must match what we requested in Google Console
+GOOGLE_SCOPES = [
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar.readonly",
+]
+
+# Hardcoded single user ID
+DEFAULT_USER_ID = "default"
+
 app = FastAPI(title="Planner AI", version="0.9.0")
 
 # CORS middleware for Next.js frontend
@@ -52,51 +77,19 @@ app.add_middleware(
 )
 
 backend = BackendAPI()
-# ============================================================================
-# Prometheus metrics (observability)
-# ============================================================================
-REQUESTS_TOTAL = Counter(
-    "planner_requests_total",
-    "Total number of HTTP requests",
-    ["endpoint", "status"],
-)
-
-REQUEST_LATENCY_SECONDS = Histogram(
-    "planner_request_latency_seconds",
-    "Request latency in seconds",
-    ["endpoint"],
-)
-
-TASKS_EXTRACTED_TOTAL = Counter(
-    "planner_tasks_extracted_total",
-    "Total number of extracted tasks",
-)
-
-TASKS_SCHEDULED_TOTAL = Counter(
-    "planner_tasks_scheduled_total",
-    "Total number of scheduled tasks",
-)
-
-LLM_TIER_TOTAL = Counter(
-    "planner_llm_tier_total",
-    "Number of times a given LLM tier was used",
-    ["tier"],
-)
-
-QUEUE_DEPTH = Gauge(
-    "planner_queue_depth",
-    "Current notes queue size (pending items)",
-)
-
-# In-memory store for recent tasks and schedules (last 50)
-recent_tasks: deque = deque(maxlen=50)
-recent_schedules: dict = {}  # date_str -> schedule
 
 # Durable queue instance (initialized in startup)
 durable_queue: Optional[DurableQueue] = None
 
+# Google Auth Store instance
+google_auth_store: Optional[GoogleAuthStore] = None
+
 # Feature flag for durable queue (can be disabled via env var)
-USE_DURABLE_QUEUE = os.getenv("USE_DURABLE_QUEUE", "true").lower() in {"1", "true", "yes"}
+USE_DURABLE_QUEUE = os.getenv("USE_DURABLE_QUEUE", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 STALE_RECOVERY_INTERVAL_S = float(os.getenv("STALE_RECOVERY_INTERVAL_S", "60"))
 
 
@@ -117,6 +110,12 @@ policy = EnergyPolicy(
 # Legacy in-memory queue (used when USE_DURABLE_QUEUE=false)
 notes_queue: asyncio.Queue[str] = asyncio.Queue()
 
+# In-memory storage for recent tasks (for display purposes)
+recent_tasks: deque = deque(maxlen=100)
+
+# In-memory storage for recent schedules (keyed by date string)
+recent_schedules: dict = {}
+
 
 def _serialize_status(status: Optional[EnergyStatus]) -> Optional[dict]:
     return asdict(status) if status is not None else None
@@ -127,9 +126,14 @@ async def _get_energy_status() -> Optional[EnergyStatus]:
         return None
     return await asyncio.to_thread(fetch_energy_status, ENERGY_STATUS_URL, 1.0)
 
+# ============================================================================
+# Google OAuth2 Endpoints - MOVED TO BOTTOM
+# ============================================================================
+
+
 
 async def _process_notes(notes: str, llm_tier: str) -> dict:
-    # Note: backend.submit_notes accepts llm_tier as a keyword argument, 
+    # Note: backend.submit_notes accepts llm_tier as a keyword argument,
     # but we need to pass it correctly via asyncio.to_thread
     return await asyncio.to_thread(backend.submit_notes, notes, llm_tier=llm_tier)
 
@@ -147,48 +151,38 @@ def _handle_shutdown(signum, frame):
 
 @app.on_event("startup")
 async def startup() -> None:
-    global durable_queue
-    
-    # Start CodeCarbon emissions tracking
-    tracker.start()
-    logger.info("CodeCarbon tracker started")
-    
-    # Register signal handlers for graceful shutdown
-    signal.signal(signal.SIGTERM, _handle_shutdown)
-    signal.signal(signal.SIGINT, _handle_shutdown)
-    
-    # Initialize database and durable queue if enabled
+    global durable_queue, google_auth_store
+
+    # Initialize DB connection
+    await db.init_db_pool()
+    await db.init_schema()
+
+    # Initialize Durable Queue
     if USE_DURABLE_QUEUE:
-        try:
-            logger.info("Initializing PostgreSQL connection pool...")
-            await db.init_db_pool()
-            
-            logger.info("Initializing database schema...")
-            await db.init_schema()
-            
-            durable_queue = DurableQueue()
-            logger.info("Durable queue initialized successfully")
-            
-            # Start the durable queue worker
-            asyncio.create_task(_durable_queue_worker())
-            
-            # Start the stale item recovery task
-            asyncio.create_task(_stale_recovery_worker())
-        except Exception as e:
-            logger.error(f"Failed to initialize durable queue: {e}")
-            logger.warning("Falling back to in-memory queue")
-            durable_queue = None
-            asyncio.create_task(_queue_worker())
+        durable_queue = DurableQueue()
+        # Start background workers...
+        asyncio.create_task(_durable_queue_worker())
+        asyncio.create_task(_stale_recovery_worker())
     else:
-        logger.info("Durable queue disabled, using in-memory queue")
+        # Start legacy in-memory worker
         asyncio.create_task(_queue_worker())
+
+    # Initialize Google Auth Store
+    google_auth_store = GoogleAuthStore()
+
+    # Start CodeCarbon tracking if not already started
+    try:
+        tracker.start()
+        logger.info("CodeCarbon tracker started")
+    except Exception as e:
+        logger.error(f"Failed to start CodeCarbon tracker: {e}")
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
     """Graceful shutdown - close database connections."""
     logger.info("Shutting down...")
-    
+
     if USE_DURABLE_QUEUE:
         try:
             await db.close_db_pool()
@@ -200,38 +194,42 @@ async def shutdown() -> None:
 async def _durable_queue_worker() -> None:
     """Background worker that processes items from the durable queue."""
     logger.info("Durable queue worker started")
-    
+
     while True:
         try:
             # Check if there are pending items
             if durable_queue is None:
                 await asyncio.sleep(QUEUE_POLL_INTERVAL_S)
                 continue
-            
+
             pending_count = await durable_queue.get_pending_count()
             if pending_count == 0:
                 await asyncio.sleep(QUEUE_POLL_INTERVAL_S)
                 continue
-            
+
             # Check energy status
             status = await _get_energy_status()
             if not policy.should_process_now(status):
-                logger.debug(f"Energy conditions not favorable, waiting... ({pending_count} items pending)")
+                logger.debug(
+                    f"Energy conditions not favorable, waiting... ({pending_count} items pending)"
+                )
                 await asyncio.sleep(QUEUE_POLL_INTERVAL_S)
                 continue
-            
+
             # Dequeue and process
             item = await durable_queue.dequeue()
             if item is None:
                 await asyncio.sleep(QUEUE_POLL_INTERVAL_S)
                 continue
-            
+
             llm_tier = policy.llm_tier(status)
-            logger.info(f"Processing queued item {item.id} (attempt {item.attempts}, tier: {llm_tier})")
-            
+            logger.info(
+                f"Processing queued item {item.id} (attempt {item.attempts}, tier: {llm_tier})"
+            )
+
             try:
                 result = await _process_notes(item.notes, llm_tier=llm_tier)
-                
+
                 # Store tasks and schedule
                 if "tasks" in result and result["tasks"]:
                     for task in result["tasks"]:
@@ -240,8 +238,78 @@ async def _durable_queue_worker() -> None:
                         recent_tasks.appendleft(task)
                 if "schedule" in result and result["schedule"]:
                     date_str = datetime.now().strftime("%Y-%m-%d")
-                    recent_schedules[date_str] = result["schedule"]
+                    # Convert schedule list to format expected by frontend
+                    schedule_list = result["schedule"]
+                    slots = []
+                    for s in schedule_list:
+                        # Extract start/end times as HH:MM strings
+                        start_time = s.get("start_time", "")
+                        end_time = s.get("end_time", "")
+                        # Handle datetime objects or ISO strings
+                        if hasattr(start_time, 'strftime'):
+                            start_time = start_time.strftime("%H:%M")
+                        elif isinstance(start_time, str) and "T" in start_time:
+                            start_time = start_time.split("T")[1][:5]
+                        if hasattr(end_time, 'strftime'):
+                            end_time = end_time.strftime("%H:%M")
+                        elif isinstance(end_time, str) and "T" in end_time:
+                            end_time = end_time.split("T")[1][:5]
+                        slots.append({
+                            "start_time": start_time,
+                            "end_time": end_time,
+                            "task": {
+                                "title": s.get("title", "Task"),
+                                "category": s.get("category", "work"),
+                                "priority": s.get("priority", 3),
+                                "estimated_duration": s.get("estimated_duration_min", 30),
+                            }
+                        })
+                    recent_schedules[date_str] = {"slots": slots}
+                    logger.info(f"Stored schedule with {len(slots)} slots for {date_str}")
+
                 
+                # Sync to Google Calendar if possible
+                if "schedule" in result and result["schedule"] and google_auth_store:
+                    try:
+                        credentials = await google_auth_store.get_credentials(DEFAULT_USER_ID)
+                        if credentials:
+                            logger.info("Syncing schedule to Google Calendar...")
+                            
+                            # Convert JSON result back to ScheduledTask objects
+                            task_objects = []
+                            # result["schedule"] is a list of task dicts
+                            for item in result["schedule"]:
+                                try:
+                                    s_time = item.get("start_time")
+                                    e_time = item.get("end_time")
+                                    
+                                    # Handle string to datetime conversion
+                                    if isinstance(s_time, str):
+                                        s_time = datetime.fromisoformat(s_time)
+                                    if isinstance(e_time, str):
+                                        e_time = datetime.fromisoformat(e_time)
+
+                                    t = ScheduledTask(
+                                        title=item.get("title", "Untitled"),
+                                        description=item.get("description"),
+                                        category=item.get("category"),
+                                        priority=item.get("priority", 3),
+                                        estimated_duration_min=item.get("estimated_duration_min", 30),
+                                        start_time=s_time,
+                                        end_time=e_time
+                                    )
+                                    task_objects.append(t)
+                                except Exception as e:
+                                    logger.warning(f"Skipping task for sync due to parse error: {e}")
+                                
+                            cal_integration = CalendarIntegration(credentials=credentials)
+                            # Run sync in thread as it uses blocking Http requests
+                            synced_tasks = await asyncio.to_thread(cal_integration.sync, task_objects)
+                            logger.info(f"Synced {len(synced_tasks)} tasks to Google Calendar")
+                            
+                    except Exception as e:
+                        logger.error(f"Failed to auto-sync to calendar: {e}")
+
                 # Mark as completed
                 await durable_queue.complete(
                     item_id=item.id,
@@ -257,7 +325,25 @@ async def _durable_queue_worker() -> None:
                 new_status = await durable_queue.fail(item.id, str(e))
                 if new_status == "dead":
                     logger.error(f"Item {item.id} moved to dead letter queue after max retries")
-                    
+
+                # Mark as completed
+                await durable_queue.complete(
+                    item_id=item.id,
+                    result=result,
+                    energy_price_eur=status.electricity_price_eur if status else None,
+                    solar_available=status.solar_available if status else None,
+                    llm_tier=llm_tier,
+                )
+                logger.info(f"Successfully processed queued item {item.id}")
+
+            except Exception as e:
+                logger.exception(f"Failed to process queued item {item.id}: {e}")
+                new_status = await durable_queue.fail(item.id, str(e))
+                if new_status == "dead":
+                    logger.error(
+                        f"Item {item.id} moved to dead letter queue after max retries"
+                    )
+
         except Exception as e:
             logger.exception(f"Error in durable queue worker: {e}")
             await asyncio.sleep(QUEUE_POLL_INTERVAL_S)
@@ -266,13 +352,13 @@ async def _durable_queue_worker() -> None:
 async def _stale_recovery_worker() -> None:
     """Periodically recover items stuck in processing state."""
     logger.info("Stale recovery worker started")
-    
+
     while True:
         await asyncio.sleep(STALE_RECOVERY_INTERVAL_S)
-        
+
         if durable_queue is None:
             continue
-        
+
         try:
             recovered = await durable_queue.recover_stale(timeout_minutes=5)
             if recovered > 0:
@@ -284,7 +370,7 @@ async def _stale_recovery_worker() -> None:
 async def _queue_worker() -> None:
     """Legacy in-memory queue worker (used when USE_DURABLE_QUEUE=false)."""
     logger.info("In-memory queue worker started")
-    
+
     while True:
         if notes_queue.empty():
             await asyncio.sleep(QUEUE_POLL_INTERVAL_S)
@@ -298,7 +384,7 @@ async def _queue_worker() -> None:
         notes = await notes_queue.get()
         try:
             result = await _process_notes(notes, llm_tier=policy.llm_tier(status))
-            
+
             # Store tasks and schedule
             if "tasks" in result and result["tasks"]:
                 for task in result["tasks"]:
@@ -306,12 +392,183 @@ async def _queue_worker() -> None:
                     recent_tasks.appendleft(task)
             if "schedule" in result and result["schedule"]:
                 date_str = datetime.now().strftime("%Y-%m-%d")
-                recent_schedules[date_str] = result["schedule"]
-                
+                # Convert schedule list to format expected by frontend
+                schedule_list = result["schedule"]
+                slots = []
+                for s in schedule_list:
+                    start_time = s.get("start_time", "")
+                    end_time = s.get("end_time", "")
+                    # Handle datetime objects or ISO strings
+                    if hasattr(start_time, 'strftime'):
+                        start_time = start_time.strftime("%H:%M")
+                    elif isinstance(start_time, str) and "T" in start_time:
+                        start_time = start_time.split("T")[1][:5]
+                    if hasattr(end_time, 'strftime'):
+                        end_time = end_time.strftime("%H:%M")
+                    elif isinstance(end_time, str) and "T" in end_time:
+                        end_time = end_time.split("T")[1][:5]
+                    slots.append({
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "task": {
+                            "title": s.get("title", "Task"),
+                            "category": s.get("category", "work"),
+                            "priority": s.get("priority", 3),
+                            "estimated_duration": s.get("estimated_duration_min", 30),
+                        }
+                    })
+                recent_schedules[date_str] = {"slots": slots}
+
         except Exception:
+
             logger.exception("Failed to process queued notes")
         finally:
             notes_queue.task_done()
+
+
+
+# ============================================================================
+# Google OAuth Endpoints
+# ============================================================================
+
+
+@app.get("/auth/google/login")
+async def google_login():
+    """Initiates the OAuth2 flow - redirects to Google."""
+    if not Flow:
+        raise HTTPException(status_code=501, detail="Google Auth not configured")
+
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(status_code=500, detail="Google credentials not configured")
+
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+            }
+        },
+        scopes=[
+            "openid",
+            "https://www.googleapis.com/auth/calendar.events",
+            "https://www.googleapis.com/auth/calendar.readonly",
+            "https://www.googleapis.com/auth/userinfo.email",
+        ],
+        redirect_uri=GOOGLE_REDIRECT_URI,
+    )
+
+    authorization_url, state = flow.authorization_url(
+        access_type="offline", include_granted_scopes="true"
+    )
+
+    # Redirect the browser directly to Google's OAuth page
+    return Response(
+        status_code=307,
+        headers={"Location": authorization_url}
+    )
+
+
+@app.get("/auth/google/callback")
+async def google_callback(code: str, error: Optional[str] = None):
+    """Handles the OAuth2 callback."""
+    if error:
+        logger.error(f"OAuth error: {error}")
+        return Response(
+            status_code=307,
+            headers={"Location": "http://localhost:3000/calendar?error=" + error},
+        )
+
+    if not Flow:
+        return Response(
+            status_code=307,
+            headers={
+                "Location": "http://localhost:3000/calendar?error=configuration_error"
+            },
+        )
+
+    try:
+        flow = Flow.from_client_config(
+            {
+                "web": {
+                    "client_id": GOOGLE_CLIENT_ID,
+                    "client_secret": GOOGLE_CLIENT_SECRET,
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                }
+            },
+            scopes=[
+                "openid",
+                "https://www.googleapis.com/auth/calendar.events",
+                "https://www.googleapis.com/auth/calendar.readonly",
+                "https://www.googleapis.com/auth/userinfo.email",
+            ],
+            redirect_uri=GOOGLE_REDIRECT_URI,
+        )
+
+        flow.fetch_token(code=code)
+
+        credentials = flow.credentials
+
+        # Get user email
+        try:
+            session = flow.authorized_session()
+            user_info = session.get("https://www.googleapis.com/userinfo/v2/me").json()
+            email = user_info.get("email")
+        except Exception as e:
+            logger.error(f"Failed to fetch user email: {e}")
+            email = None
+
+        if google_auth_store:
+            # We assume credentials are google.oauth2.credentials.Credentials for this flow
+            # Type ignore because Flow can theoretically return other types, but in this context it's OAuth2
+            await google_auth_store.save_credentials(
+                DEFAULT_USER_ID,
+                credentials,
+                str(email) if email else None,  # type: ignore
+            )
+
+        return Response(
+            status_code=307,
+            headers={"Location": "http://localhost:3000/calendar?success=true"},
+        )
+
+    except Exception as e:
+        logger.error(f"OAuth callback failed: {e}")
+        return Response(
+            status_code=307,
+            headers={"Location": f"http://localhost:3000/calendar?error={str(e)}"},
+        )
+
+
+@app.get("/auth/google/status")
+async def google_status() -> dict:
+    """Check if user is connected."""
+    if not google_auth_store:
+        return {"connected": False, "error": "Auth store not initialized"}
+
+    try:
+        email = await google_auth_store.get_email(DEFAULT_USER_ID)
+        creds = await google_auth_store.get_credentials(DEFAULT_USER_ID)
+        return {"connected": creds is not None, "email": email}
+    except Exception as e:
+        logger.error(f"Error checking status: {e}")
+        return {"connected": False, "error": str(e)}
+
+
+@app.post("/auth/google/disconnect")
+async def google_disconnect() -> dict:
+    """Revoke and delete stored credentials."""
+    if not google_auth_store:
+        raise HTTPException(status_code=500, detail="Auth store not initialized")
+
+    try:
+        await google_auth_store.delete_credentials(DEFAULT_USER_ID)
+        return {"status": "disconnected"}
+    except Exception as e:
+        logger.error(f"Error disconnecting: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/notes")
@@ -333,7 +590,9 @@ async def submit_notes(payload: NotesIn) -> dict:
 
         try:
             result = await _process_notes(payload.notes, llm_tier=llm_tier)
-            logger.info(f"Notes processed successfully. Tasks found: {len(result.get('tasks', []))}")
+            logger.info(
+                f"Notes processed successfully. Tasks found: {len(result.get('tasks', []))}"
+            )
         except Exception as e:
             logger.error(f"Error processing notes: {e}")
             # Optionally count failures separately later; for now we keep behavior identical.
@@ -350,12 +609,78 @@ async def submit_notes(payload: NotesIn) -> dict:
 
         if schedule_out:
             date_str = datetime.now().strftime("%Y-%m-%d")
-            recent_schedules[date_str] = schedule_out
+            # Convert schedule list to format expected by frontend
+            slots = []
+            for s in schedule_out:
+                start_time = s.get("start_time", "")
+                end_time = s.get("end_time", "")
+                # Handle datetime objects or ISO strings
+                if hasattr(start_time, 'strftime'):
+                    start_time = start_time.strftime("%H:%M")
+                elif isinstance(start_time, str) and "T" in start_time:
+                    start_time = start_time.split("T")[1][:5]
+                if hasattr(end_time, 'strftime'):
+                    end_time = end_time.strftime("%H:%M")
+                elif isinstance(end_time, str) and "T" in end_time:
+                    end_time = end_time.split("T")[1][:5]
+                slots.append({
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "task": {
+                        "title": s.get("title", "Task"),
+                        "category": s.get("category", "work"),
+                        "priority": s.get("priority", 3),
+                        "estimated_duration": s.get("estimated_duration_min", 30),
+                    }
+                })
+            recent_schedules[date_str] = {"slots": slots}
+            logger.info(f"Stored schedule with {len(slots)} slots for {date_str}")
+
+            # Sync to Google Calendar if possible
+            if schedule_out and google_auth_store:
+                try:
+                    credentials = await google_auth_store.get_credentials(DEFAULT_USER_ID)
+                    if credentials:
+                        logger.info("Syncing schedule to Google Calendar (Immediate Mode)...")
+                        
+                        task_objects = []
+                        for item in schedule_out:
+                            try:
+                                s_time = item.get("start_time")
+                                e_time = item.get("end_time")
+                                
+                                # Handle string to datetime conversion
+                                if isinstance(s_time, str):
+                                    s_time = datetime.fromisoformat(s_time)
+                                if isinstance(e_time, str):
+                                    e_time = datetime.fromisoformat(e_time)
+
+                                t = ScheduledTask(
+                                    title=item.get("title", "Untitled"),
+                                    description=item.get("description"),
+                                    category=item.get("category"),
+                                    priority=item.get("priority", 3),
+                                    estimated_duration_min=item.get("estimated_duration_min", 30),
+                                    start_time=s_time,
+                                    end_time=e_time
+                                )
+                                task_objects.append(t)
+                            except Exception as e:
+                                logger.warning(f"Skipping task for sync due to parse error: {e}")
+                        
+                        cal_integration = CalendarIntegration(credentials=credentials)
+                        synced_tasks = await asyncio.to_thread(cal_integration.sync, task_objects)
+                        logger.info(f"Synced {len(synced_tasks)} tasks to Google Calendar")
+                except Exception as e:
+                    logger.error(f"Failed to auto-sync to calendar: {e}")
 
         # Prometheus counters (best-effort)
+
         try:
             REQUESTS_TOTAL.labels(endpoint="/notes", status="processed").inc()
-            REQUEST_LATENCY_SECONDS.labels(endpoint="/notes").observe(time.time() - start)
+            REQUEST_LATENCY_SECONDS.labels(endpoint="/notes").observe(
+                time.time() - start
+            )
             TASKS_EXTRACTED_TOTAL.inc(len(tasks_out))
             TASKS_SCHEDULED_TOTAL.inc(len(schedule_out))
 
@@ -395,7 +720,9 @@ async def submit_notes(payload: NotesIn) -> dict:
         # Prometheus counters (best-effort)
         try:
             REQUESTS_TOTAL.labels(endpoint="/notes", status="queued").inc()
-            REQUEST_LATENCY_SECONDS.labels(endpoint="/notes").observe(time.time() - start)
+            REQUEST_LATENCY_SECONDS.labels(endpoint="/notes").observe(
+                time.time() - start
+            )
             QUEUE_DEPTH.set(pending_count)
         except Exception:
             pass
@@ -429,13 +756,11 @@ async def submit_notes(payload: NotesIn) -> dict:
     }
 
 
-
-
 @app.get("/queue")
 async def queue_status() -> dict:
     """Get queue status and energy information."""
     status = await _get_energy_status()
-    
+
     if USE_DURABLE_QUEUE and durable_queue is not None:
         try:
             stats = await durable_queue.get_stats()
@@ -478,7 +803,7 @@ async def health_check() -> dict:
         "profile": os.getenv("DEPLOYMENT_PROFILE", "unknown"),
         "queue_type": "durable" if USE_DURABLE_QUEUE and durable_queue else "in-memory",
     }
-    
+
     if USE_DURABLE_QUEUE and durable_queue is not None:
         try:
             db_health = await db.health_check()
@@ -492,8 +817,9 @@ async def health_check() -> dict:
             health["queue_size"] = 0
     else:
         health["queue_size"] = notes_queue.qsize()
-    
+
     return health
+
 
 @app.get("/metrics")
 async def metrics() -> Response:
@@ -534,12 +860,94 @@ async def get_schedule(date: str) -> dict:
 
 @app.get("/schedule")
 async def get_today_schedule() -> dict:
-    """Get today's schedule."""
-    today = datetime.now().strftime("%Y-%m-%d")
-    schedule = recent_schedules.get(today, {})
+    """
+    Get today's schedule.
+    Merges internally scheduled tasks with Google Calendar events if connected.
+    """
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    
+    # 1. Get local/LLM-generated schedule
+    stored_data = recent_schedules.get(today_str, {"slots": []})
+    # Copy to avoid mutating the cached internal structure
+    slots = list(stored_data.get("slots", []))
+    
+    # 2. Fetch from Google Calendar if connected
+    if google_auth_store:
+        try:
+            creds = await google_auth_store.get_credentials(DEFAULT_USER_ID)
+            if creds:
+                integration = CalendarIntegration(creds)
+                
+                # Define "today" in UTC (approximation for now)
+                now = datetime.now()
+                start_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_dt = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+                
+                events = await integration.get_events(start_dt, end_dt)
+                
+                # Transform Google Events to Frontend Slots
+                for e in events:
+                    # Skip cancelled
+                    if e.get("status") == "cancelled":
+                        continue
+                        
+                    start = e.get("start", {})
+                    end = e.get("end", {})
+                    
+                    # Handle "dateTime" (timed) vs "date" (all-day)
+                    start_raw = start.get("dateTime") or start.get("date")
+                    end_raw = end.get("dateTime") or end.get("date")
+                    
+                    if not start_raw: 
+                        continue
+
+                    # Extract HH:MM
+                    # If it's a full ISO string with T: 2026-01-07T13:00:00-05:00
+                    # We want to display the local time relative to that string (13:00)
+                    # Simple string split works for ISO formats commonly returned
+                    start_hhmm = "00:00"
+                    if "T" in start_raw:
+                        # Split by T, take time part, take first 5 chars
+                        start_hhmm = start_raw.split("T")[1][:5]
+                    
+                    end_hhmm = "23:59"
+                    if end_raw and "T" in end_raw:
+                        end_hhmm = end_raw.split("T")[1][:5]
+                    elif not end_raw and "T" in start_raw:
+                        # Default 1 hour if no end?
+                         end_hhmm = "23:59"
+
+                    # Avoid duplicates? 
+                    # Simple check: same title and start time
+                    is_duplicate = any(
+                        s["start_time"] == start_hhmm and 
+                        s["task"]["title"] == e.get("summary") 
+                        for s in slots
+                    )
+                    
+                    if not is_duplicate:
+                        slots.append({
+                            "start_time": start_hhmm,
+                            "end_time": end_hhmm,
+                            "task": {
+                                "title": e.get("summary", "(No Title)"),
+                                "category": "work", # default
+                                "priority": 3,
+                                "estimated_duration": 60, # estimate
+                                "description": e.get("description", "")
+                            }
+                        })
+                        
+                # Sort slots by time
+                slots.sort(key=lambda x: x["start_time"])
+                
+        except Exception as err:
+             logger.error(f"Error merging Google Calendar events: {err}")
+             # Continue with just local slots if GCal fails
+
     return {
-        "date": today,
-        "schedule": schedule,
+        "date": today_str,
+        "schedule": {"slots": slots},
     }
 
 
@@ -550,23 +958,24 @@ async def get_carbon_metrics() -> dict:
         emissions = 0.0
         energy = 0.0
         duration = 0.0
-        
+
         # Get energy consumption (available while tracking)
-        if hasattr(tracker, '_total_energy') and tracker._total_energy is not None:
-            if hasattr(tracker._total_energy, 'kWh'):
+        if hasattr(tracker, "_total_energy") and tracker._total_energy is not None:
+            if hasattr(tracker._total_energy, "kWh"):
                 energy = float(tracker._total_energy.kWh)
-        
+
         # Calculate duration using monotonic time (CodeCarbon uses time.monotonic for _start_time)
-        if hasattr(tracker, '_start_time') and tracker._start_time is not None:
+        if hasattr(tracker, "_start_time") and tracker._start_time is not None:
             import time as time_module
+
             duration = time_module.monotonic() - tracker._start_time
-        
+
         # Estimate emissions from energy
         # Use average carbon intensity of ~0.4 kg CO2/kWh (global average)
         # This is a reasonable estimate when real-time data isn't available
         if energy > 0:
             emissions = energy * 0.4
-        
+
         return {
             "emissions_kg": emissions,
             "emissions_g": emissions * 1000,
@@ -590,11 +999,12 @@ async def get_carbon_metrics() -> dict:
 # Queue Management Endpoints (Durable Queue Only)
 # ============================================================================
 
+
 @app.get("/queue/items")
 async def get_queue_items(limit: int = 20, status: Optional[str] = None) -> dict:
     """
     Get recent queue items.
-    
+
     Args:
         limit: Maximum number of items to return (default 20)
         status: Filter by status (pending, processing, completed, failed, dead)
@@ -602,22 +1012,28 @@ async def get_queue_items(limit: int = 20, status: Optional[str] = None) -> dict
     if not USE_DURABLE_QUEUE or durable_queue is None:
         raise HTTPException(
             status_code=400,
-            detail="Durable queue not enabled. Set USE_DURABLE_QUEUE=true"
+            detail="Durable queue not enabled. Set USE_DURABLE_QUEUE=true",
         )
-    
+
     try:
         items = await durable_queue.get_recent_items(limit=limit, status=status)
         return {
             "items": [
                 {
                     "id": item.id,
-                    "notes": item.notes[:100] + "..." if len(item.notes) > 100 else item.notes,
+                    "notes": item.notes[:100] + "..."
+                    if len(item.notes) > 100
+                    else item.notes,
                     "status": item.status,
                     "attempts": item.attempts,
                     "max_attempts": item.max_attempts,
                     "last_error": item.last_error,
-                    "created_at": item.created_at.isoformat() if item.created_at else None,
-                    "completed_at": item.completed_at.isoformat() if item.completed_at else None,
+                    "created_at": item.created_at.isoformat()
+                    if item.created_at
+                    else None,
+                    "completed_at": item.completed_at.isoformat()
+                    if item.completed_at
+                    else None,
                     "submitted_llm_tier": item.submitted_llm_tier,
                     "processed_llm_tier": item.processed_llm_tier,
                 }
@@ -636,14 +1052,14 @@ async def get_queue_item(item_id: str) -> dict:
     if not USE_DURABLE_QUEUE or durable_queue is None:
         raise HTTPException(
             status_code=400,
-            detail="Durable queue not enabled. Set USE_DURABLE_QUEUE=true"
+            detail="Durable queue not enabled. Set USE_DURABLE_QUEUE=true",
         )
-    
+
     try:
         item = await durable_queue.get_item(item_id)
         if item is None:
             raise HTTPException(status_code=404, detail="Queue item not found")
-        
+
         return {
             "id": item.id,
             "notes": item.notes,
@@ -659,8 +1075,12 @@ async def get_queue_item(item_id: str) -> dict:
             "processed_llm_tier": item.processed_llm_tier,
             "created_at": item.created_at.isoformat() if item.created_at else None,
             "updated_at": item.updated_at.isoformat() if item.updated_at else None,
-            "processing_started_at": item.processing_started_at.isoformat() if item.processing_started_at else None,
-            "completed_at": item.completed_at.isoformat() if item.completed_at else None,
+            "processing_started_at": item.processing_started_at.isoformat()
+            if item.processing_started_at
+            else None,
+            "completed_at": item.completed_at.isoformat()
+            if item.completed_at
+            else None,
             "worker_id": item.worker_id,
             "result": item.result,
         }
@@ -677,19 +1097,23 @@ async def get_dead_letter_items(limit: int = 50) -> dict:
     if not USE_DURABLE_QUEUE or durable_queue is None:
         raise HTTPException(
             status_code=400,
-            detail="Durable queue not enabled. Set USE_DURABLE_QUEUE=true"
+            detail="Durable queue not enabled. Set USE_DURABLE_QUEUE=true",
         )
-    
+
     try:
         items = await durable_queue.get_dead_letter_items(limit=limit)
         return {
             "items": [
                 {
                     "id": item.id,
-                    "notes": item.notes[:100] + "..." if len(item.notes) > 100 else item.notes,
+                    "notes": item.notes[:100] + "..."
+                    if len(item.notes) > 100
+                    else item.notes,
                     "attempts": item.attempts,
                     "last_error": item.last_error,
-                    "created_at": item.created_at.isoformat() if item.created_at else None,
+                    "created_at": item.created_at.isoformat()
+                    if item.created_at
+                    else None,
                 }
                 for item in items
             ],
@@ -706,17 +1130,16 @@ async def retry_dead_item(item_id: str) -> dict:
     if not USE_DURABLE_QUEUE or durable_queue is None:
         raise HTTPException(
             status_code=400,
-            detail="Durable queue not enabled. Set USE_DURABLE_QUEUE=true"
+            detail="Durable queue not enabled. Set USE_DURABLE_QUEUE=true",
         )
-    
+
     try:
         success = await durable_queue.retry_dead_item(item_id)
         if not success:
             raise HTTPException(
-                status_code=400,
-                detail="Item not found or not in dead status"
+                status_code=400, detail="Item not found or not in dead status"
             )
-        
+
         return {
             "status": "success",
             "message": f"Item {item_id} has been reset to pending",
@@ -734,9 +1157,9 @@ async def purge_completed_items(older_than_hours: int = 24) -> dict:
     if not USE_DURABLE_QUEUE or durable_queue is None:
         raise HTTPException(
             status_code=400,
-            detail="Durable queue not enabled. Set USE_DURABLE_QUEUE=true"
+            detail="Durable queue not enabled. Set USE_DURABLE_QUEUE=true",
         )
-    
+
     try:
         count = await durable_queue.purge_completed(older_than_hours=older_than_hours)
         return {

@@ -63,3 +63,21 @@ spec:
               value: "qwen:14b"
             - name: LLM_MODEL_SMALL
               value: "llama3.2"
+            # Google Calendar Integration
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: google-oauth-secret
+                  key: client_id
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: google-oauth-secret
+                  key: client_secret
+            - name: GOOGLE_REDIRECT_URI
+              value: "http://localhost:8000/auth/google/callback"
+            - name: GOOGLE_TOKEN_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: google-oauth-secret
+                  key: encryption_key

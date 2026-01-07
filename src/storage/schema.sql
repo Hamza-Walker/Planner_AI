@@ -218,3 +218,22 @@ GROUP BY status;
 
 -- Comment on table
 COMMENT ON TABLE queue_items IS 'Durable queue for energy-aware task processing. Items are queued when energy is expensive and processed when conditions improve.';
+
+-- Google Calendar Credentials Table
+CREATE TABLE IF NOT EXISTS google_credentials (
+    user_id VARCHAR(255) PRIMARY KEY, -- Currently "default" for single-user
+    access_token TEXT NOT NULL,       -- Encrypted
+    refresh_token TEXT,               -- Encrypted
+    token_expiry TIMESTAMP WITH TIME ZONE,
+    email VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- Trigger to auto-update google_credentials updated_at
+DROP TRIGGER IF EXISTS update_google_credentials_updated_at ON google_credentials;
+CREATE TRIGGER update_google_credentials_updated_at
+    BEFORE UPDATE ON google_credentials
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+

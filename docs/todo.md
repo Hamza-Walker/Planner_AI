@@ -172,15 +172,17 @@ This document tracks the implementation progress of carbon/cost-aware features f
 ## ❌ Not Yet Implemented
 
 ### 14. Google Calendar Integration (High Priority)
-- [ ] **OAuth2 Authentication Setup**
-  - Configure Google Cloud Console credentials
-  - Implement OAuth2 flow for user authorization
-  - Secure token storage and refresh
+- [x] **OAuth2 Authentication Setup**
+  - Configure Google Cloud Console credentials (done)
+  - Implement OAuth2 flow for user authorization (backend ready, frontend ready)
+  - Secure token storage and refresh (`google_credentials` table + encryption)
 
-- [ ] **Calendar API Integration**
+- [x] **Calendar API Integration**
   - Fetch existing appointments from Google Calendar
   - Display appointments on calendar page
   - Create/update/delete events via API
+  - Verified two-way sync (UI <-> Google Calendar)
+  - Fixed Timezone Mismatch: Backend now fetches calendar timezone to ensure events appear at correct local time (e.g., 1PM vs 13:00 UTC).
 
 - [ ] **Drag & Drop Scheduling**
   - Implement drag-and-drop for task rescheduling
@@ -202,6 +204,7 @@ This document tracks the implementation progress of carbon/cost-aware features f
   - Extract location from task descriptions
   - Detect urgency and priority automatically
   - Identify task dependencies
+  - **[ISSUE] Fix specific time extraction**: LLM currently fails to extract times like "18:35" accurately (tested with "sofias birthday party 18:35"), defaulting to first available slot. Needs prompt engineering or fallback parsing logic.
 
 - [ ] **User Preferences Learning**
   - Learn preferred time slots for different task categories
@@ -274,19 +277,17 @@ This document tracks the implementation progress of carbon/cost-aware features f
 
 ## 📋 Recommended Next Steps
 
-1. **High Priority - Google Calendar Integration**
-   - Set up Google Cloud Console project
-   - Implement OAuth2 flow
-   - Create calendar sync service
+1.  **High Priority - Fix Task Extraction Accuracy**
+    - Address the LLM extraction failure where specific times (e.g., "18:35") are missed, causing tasks to default to 09:00.
+    - Improve prompts or add regex fallback for strict time parsing.
 
-2. **High Priority - AI Context Improvements**
-   - Add calendar context to task scheduling
-   - Implement conflict detection
-   - Extract more task metadata
+2.  **High Priority - AI Context Improvements**
+    - Add calendar context to task scheduling (don't book over existing meetings)
+    - Implement conflict detection
 
-3. **Medium Priority - UI Polish**
-   - Improve dashboard layout
-   - Add drag-and-drop to calendar
+3.  **Medium Priority - UI Polish**
+    - Improve dashboard layout
+    - Add drag-and-drop to calendar
 
 ---
 
@@ -310,8 +311,8 @@ This document tracks the implementation progress of carbon/cost-aware features f
 | Grafana | `10-redeploy-adapt/k8s/grafana.yaml` | ✅ Complete |
 | QueueList UI | `planner-ui/src/components/QueueList.tsx` | ✅ Complete |
 | EnergyStatus UI | `planner-ui/src/components/EnergyStatus.tsx` | ✅ Complete |
-| Calendar Integration | `src/integration/calendar_integration.py` | 🔄 Needs Google API |
-| Calendar Page | `planner-ui/src/app/calendar/page.tsx` | 🔄 Needs Enhancement |
+| Calendar Integration | `src/integration/calendar_integration.py` | ✅ Complete |
+| Calendar Page | `planner-ui/src/app/calendar/page.tsx` | ✅ Connected (Sync Active) |
 | Carbon Page | `planner-ui/src/app/carbon/page.tsx` | ✅ Complete |
 
 ---

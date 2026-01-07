@@ -58,8 +58,16 @@ class Scheduler:
         # 2. Schedule Fixed Tasks
         for t in fixed_tasks:
             try:
-                # Parse HH:MM
-                h, m = map(int, t.fixed_time.split(':'))
+                # Parse HH:MM, or just H
+                parts = t.fixed_time.split(':')
+                if len(parts) == 2:
+                    h, m = map(int, parts)
+                elif len(parts) == 1:
+                    h = int(parts[0])
+                    m = 0
+                else:
+                    raise ValueError("Invalid time format")
+
                 start_dt = datetime.combine(base_day, time(h, m))
                 
                 dur_min = int(t.estimated_duration_min or 30)

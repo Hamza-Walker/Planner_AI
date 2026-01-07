@@ -30,21 +30,25 @@ class TaskExtractor:
                 "Extract the tasks from the notes. Be minimal and conservative. "
                 "Only extract tasks that are clearly stated. "
                 "Return strict JSON with this structure: "
-                '{"tasks":[{"title": "...", "description": ""}]}.'
+                '{"tasks":[{"title": "...", "description": "", "fixed_time": "HH:MM" or null, "estimated_duration_min": 30}]}.'
             )
         elif tier == "fast":
             instruction = (
                 "Extract the tasks from the notes quickly and reliably. "
                 "Return strict JSON with this structure: "
-                '{"tasks":[{"title": "...", "description": ""}]}.'
+                '{"tasks":[{"title": "...", "description": "", "fixed_time": "HH:MM" or null, "estimated_duration_min": 30}]}.'
             )
         else:
             # large / default: allow slightly smarter extraction, but still strict JSON
             instruction = (
                 "Extract the tasks from the notes with high accuracy. "
-                "You may infer a short description if it is obvious from the text. "
+                "Look for specific times (e.g. '13:00', '18:35', 'at 4pm') and extract them as 'fixed_time' in 24h HH:MM format. "
+                "Example: 'Meeting 18:35' -> fixed_time: '18:35'. "
+                "Infer 'estimated_duration_min' if mentioned (default 30). "
+                "Infer 'priority' (1-5, default 3). "
+                "Infer 'category' (work, personal, health, learning). "
                 "Return strict JSON with this structure: "
-                '{"tasks":[{"title": "...", "description": ""}]}.'
+                '{"tasks":[{"title": "...", "description": "", "fixed_time": "HH:MM" or null, "estimated_duration_min": 30, "priority": 3, "category": "work"}]}.'
             )
 
         return f"{instruction}\n\nNOTES:\n{notes}\n\nJSON:"
@@ -57,6 +61,7 @@ class TaskExtractor:
 
         prompt = self._build_prompt(text, llm_tier)
         raw = self.llm_client.complete(prompt)
+        logger.info(f"TaskExtractor: LLM raw response: {raw}")
         if not raw:
             logger.warning("TaskExtractor: empty LLM response")
             return []

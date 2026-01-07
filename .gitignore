@@ -14,3 +14,19 @@ htmlcov/
 
 # macOS
 .DS_Store
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Sensitive keys
+.electricity_maps_key
+client_secret.json
+credentials.json
+google_credentials.json
+
+# Logs and runtime files
+*.log
+powermetrics_log.txt
+emissions.csv
