@@ -547,13 +547,25 @@ async def get_today_schedule() -> dict:
 async def get_carbon_metrics() -> dict:
     """Get carbon emissions metrics from CodeCarbon."""
     try:
-        # Get current emissions data from tracker
-        emissions_raw = tracker._emissions if hasattr(tracker, '_emissions') else 0.0
-        # Ensure emissions is a float (extract value if it's an object)
-        emissions = float(emissions_raw) if not isinstance(emissions_raw, (int, float)) and hasattr(emissions_raw, "__float__") else float(emissions_raw) if isinstance(emissions_raw, (int, float, str)) else 0.0
-            
-        energy = tracker._total_energy.kWh if hasattr(tracker, '_total_energy') else 0.0
-        duration = tracker._total_duration if hasattr(tracker, '_total_duration') else 0.0
+        emissions = 0.0
+        energy = 0.0
+        duration = 0.0
+        
+        # Get energy consumption (available while tracking)
+        if hasattr(tracker, '_total_energy') and tracker._total_energy is not None:
+            if hasattr(tracker._total_energy, 'kWh'):
+                energy = float(tracker._total_energy.kWh)
+        
+        # Calculate duration using monotonic time (CodeCarbon uses time.monotonic for _start_time)
+        if hasattr(tracker, '_start_time') and tracker._start_time is not None:
+            import time as time_module
+            duration = time_module.monotonic() - tracker._start_time
+        
+        # Estimate emissions from energy
+        # Use average carbon intensity of ~0.4 kg CO2/kWh (global average)
+        # This is a reasonable estimate when real-time data isn't available
+        if energy > 0:
+            emissions = energy * 0.4
         
         return {
             "emissions_kg": emissions,

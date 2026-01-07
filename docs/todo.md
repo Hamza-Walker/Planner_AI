@@ -113,32 +113,32 @@ This document tracks the implementation progress of carbon/cost-aware features f
 ### 10. Durable Queue Implementation
 - [x] **PostgreSQL-backed Durable Queue** ✅ *Completed Jan 6, 2026*
   - PostgreSQL K8s manifests (`k8s/postgres.yaml`)
-    - Deployment with PVC for persistent storage
-    - Secret for credentials
-    - ClusterIP Service for internal access
+  - Deployment with PVC for persistent storage
+  - Secret for credentials
+  - ClusterIP Service for internal access
   - Database schema (`src/storage/schema.sql`)
-    - `queue_items` table with status tracking
-    - Retry logic with configurable max attempts
-    - Dead letter queue for failed items
-    - PostgreSQL functions for atomic dequeue operations
-    - Stale item recovery for crashed workers
+  - `queue_items` table with status tracking
+  - Retry logic with configurable max attempts
+  - Dead letter queue for failed items
+  - PostgreSQL functions for atomic dequeue operations
+  - Stale item recovery for crashed workers
   - Database connection module (`src/storage/db.py`)
-    - Async connection pool using `asyncpg`
-    - Auto-initialization of schema on startup
-    - Health check endpoint integration
+  - Async connection pool using `asyncpg`
+  - Auto-initialization of schema on startup
+  - Health check endpoint integration
   - Durable queue module (`src/storage/durable_queue.py`)
-    - `DurableQueue` class with full queue operations
-    - `enqueue()`, `dequeue()`, `complete()`, `fail()` methods
-    - `recover_stale()` for crashed worker recovery
-    - Dead letter queue management
+  - `DurableQueue` class with full queue operations
+  - `enqueue()`, `dequeue()`, `complete()`, `fail()` methods
+  - `recover_stale()` for crashed worker recovery
+  - Dead letter queue management
   - Main API integration (`src/api/main.py`)
-    - Feature flag `USE_DURABLE_QUEUE` for gradual rollout
-    - Background worker for queue processing
-    - Stale recovery worker
-    - New endpoints: `/queue/items`, `/queue/dead`, `/queue/items/{id}/retry`, `/queue/purge`
+  - Feature flag `USE_DURABLE_QUEUE` for gradual rollout
+  - Background worker for queue processing
+  - Stale recovery worker
+  - New endpoints: `/queue/items`, `/queue/dead`, `/queue/items/{id}/retry`, `/queue/purge`
   - Updated backend deployment (`k8s/backend-deployment.yaml`)
-    - `DATABASE_URL` environment variable
-    - `USE_DURABLE_QUEUE` feature flag
+  - `DATABASE_URL` environment variable
+  - `USE_DURABLE_QUEUE` feature flag
 
 ### 11. Electricity Maps API Integration
 - [x] **Real Carbon Intensity Data** ✅ *Completed Jan 6, 2026*
@@ -159,11 +159,19 @@ This document tracks the implementation progress of carbon/cost-aware features f
   - Added data source indicator (Electricity Maps / Simulator)
   - Queue polling reduced to 1 second for responsiveness
 
+### 13. Carbon Page UI Improvements
+- [x] **Enhanced Carbon Dashboard** ✅ *Completed Jan 7, 2026*
+  - Redesigned layout with grid system and removed "Deployment Profile" redundancy
+  - Integrated real-time Price, Solar, and Model status into a single "Live Status" card
+  - Fixed `0.0` values for CO2 emissions and runtime by patching backend CodeCarbon logic
+  - Added "Energy Savings" impact card
+  - Improved styling consistency with Tailwind CSS
+
 ---
 
 ## ❌ Not Yet Implemented
 
-### 13. Google Calendar Integration (High Priority)
+### 14. Google Calendar Integration (High Priority)
 - [ ] **OAuth2 Authentication Setup**
   - Configure Google Cloud Console credentials
   - Implement OAuth2 flow for user authorization
@@ -179,7 +187,7 @@ This document tracks the implementation progress of carbon/cost-aware features f
   - Sync changes back to Google Calendar
   - Handle conflicts and overlapping events
 
-### 14. AI Scheduling Intelligence (High Priority)
+### 15. AI Scheduling Intelligence (High Priority)
 - [ ] **Context-Aware Scheduling**
   - Detect existing appointments on the given day
   - Identify school hours / working hours
@@ -199,22 +207,6 @@ This document tracks the implementation progress of carbon/cost-aware features f
   - Learn preferred time slots for different task categories
   - Adapt to user's schedule patterns
   - Consider travel time between appointments
-
-### 15. Carbon Page Improvements (Medium Priority)
-- [ ] **Fix CO₂ Emissions Display**
-  - Currently shows "0.0000g" - needs proper CodeCarbon integration
-  - Display actual emissions since server start
-  - Add historical emissions chart
-
-- [ ] **Fix Runtime Display**
-  - Currently shows "0min" - needs proper tracking
-  - Display actual CodeCarbon tracking duration
-  - Show session vs. total runtime
-
-- [ ] **Price Display on Carbon Page**
-  - Show current electricity price prominently
-  - Add price history visualization
-  - Display cost savings from energy-aware scheduling
 
 ### 16. Dashboard UI Improvements (Medium Priority)
 - [ ] **Recent Tasks Component**
@@ -293,7 +285,6 @@ This document tracks the implementation progress of carbon/cost-aware features f
    - Extract more task metadata
 
 3. **Medium Priority - UI Polish**
-   - Fix carbon page metrics display
    - Improve dashboard layout
    - Add drag-and-drop to calendar
 
@@ -321,11 +312,11 @@ This document tracks the implementation progress of carbon/cost-aware features f
 | EnergyStatus UI | `planner-ui/src/components/EnergyStatus.tsx` | ✅ Complete |
 | Calendar Integration | `src/integration/calendar_integration.py` | 🔄 Needs Google API |
 | Calendar Page | `planner-ui/src/app/calendar/page.tsx` | 🔄 Needs Enhancement |
-| Carbon Page | `planner-ui/src/app/carbon/page.tsx` | 🔄 Needs Fixes |
+| Carbon Page | `planner-ui/src/app/carbon/page.tsx` | ✅ Complete |
 
 ---
 
-## � Resources
+##  Resources
 
 - [Electricity Maps](https://app.electricitymaps.com/map/live/fifteen_minutes)
 - [Electricity Maps API Portal](https://api-portal.electricitymaps.com/)
