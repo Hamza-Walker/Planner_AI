@@ -5,4 +5,4 @@ scrape_configs:
   - job_name: "planner-ai"
     metrics_path: /metrics
     static_configs:
-      - targets: ["planner-ai:8000"]
+      - targets: ["planner-ai-backend:8000"]
