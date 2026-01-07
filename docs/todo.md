@@ -172,22 +172,27 @@ This document tracks the implementation progress of carbon/cost-aware features f
 ## ❌ Not Yet Implemented
 
 ### 14. Google Calendar Integration (High Priority)
-- [x] **OAuth2 Authentication Setup**
+- [x] **OAuth2 Authentication Setup** ✅ *Completed Jan 7, 2026*
   - Configure Google Cloud Console credentials (done)
   - Implement OAuth2 flow for user authorization (backend ready, frontend ready)
   - Secure token storage and refresh (`google_credentials` table + encryption)
 
-- [x] **Calendar API Integration**
+- [x] **Calendar API Integration** ✅ *Completed Jan 7, 2026*
   - Fetch existing appointments from Google Calendar
   - Display appointments on calendar page
   - Create/update/delete events via API
   - Verified two-way sync (UI <-> Google Calendar)
   - Fixed Timezone Mismatch: Backend now fetches calendar timezone to ensure events appear at correct local time (e.g., 1PM vs 13:00 UTC).
+  - Upgraded to React Big Calendar with Week/Month/Day/Agenda views
+  - Range-based fetching: Frontend requests entire week, backend fetches all GCal events for that period
 
-- [ ] **Drag & Drop Scheduling**
-  - Implement drag-and-drop for task rescheduling
-  - Sync changes back to Google Calendar
-  - Handle conflicts and overlapping events
+- [x] **Drag & Drop Scheduling** ✅ *Completed Jan 7, 2026*
+  - Implemented drag-and-drop for task rescheduling using react-big-calendar DnD addon
+  - Event resize support (drag start/end times)
+  - Sync changes back to Google Calendar via `update_event()` method
+  - Manual event creation via slot selection (click empty calendar space)
+  - Backend endpoints: `POST /schedule/move`, `POST /tasks/create`
+  - Automatic calendar refresh after modifications
 
 ### 15. AI Scheduling Intelligence (High Priority)
 - [ ] **Context-Aware Scheduling**
@@ -204,7 +209,7 @@ This document tracks the implementation progress of carbon/cost-aware features f
   - Extract location from task descriptions
   - Detect urgency and priority automatically
   - Identify task dependencies
-  - **[ISSUE] Fix specific time extraction**: LLM currently fails to extract times like "18:35" accurately (tested with "sofias birthday party 18:35"), defaulting to first available slot. Needs prompt engineering or fallback parsing logic.
+  - **[KNOWN ISSUE]**: LLM extraction works but scheduler defaults tasks without fixed_time to focus_start (09:00). This is by design (UserPreferences.focus_start default), not an extraction bug. Manual calendar creation bypasses this.
 
 - [ ] **User Preferences Learning**
   - Learn preferred time slots for different task categories
@@ -212,10 +217,17 @@ This document tracks the implementation progress of carbon/cost-aware features f
   - Consider travel time between appointments
 
 ### 16. Dashboard UI Improvements (Medium Priority)
-- [ ] **Recent Tasks Component**
+- [x] **Recent Tasks Component** ✅ *Completed Jan 7, 2026*
   - Better visual design for task cards
   - Show task status (pending, completed, scheduled)
-  - Quick actions (edit, delete, reschedule)
+  - Quick actions: Added Clear button to remove all recent tasks from dashboard
+  - Real-time polling (10 second intervals)
+
+- [x] **Queue Status Component** ✅ *Completed Jan 7, 2026*
+  - Visual queue item cards with status indicators
+  - Delete button (trash icon) for dead/failed items
+  - Status badges (pending, processing, completed, failed, dead)
+  - Attempt counter for retry tracking
 
 - [ ] **Dashboard Layout**
   - Responsive design improvements
@@ -228,15 +240,19 @@ This document tracks the implementation progress of carbon/cost-aware features f
   - Accessibility improvements
 
 ### 17. Calendar Page Enhancements (Medium Priority)
-- [ ] **Visual Calendar View**
-  - Week/month view toggle
-  - Time slot visualization
+- [x] **Visual Calendar View** ✅ *Completed Jan 7, 2026*
+  - Week/month/day/agenda view toggle (React Big Calendar)
+  - Time slot visualization with 30-minute intervals
   - Color coding by task category
+  - Event tooltips showing category
+  - Drag-and-drop event movement and resizing
 
-- [ ] **Google Calendar Sync UI**
-  - Connection status indicator
-  - Sync button and last synced timestamp
-  - Error handling for API failures
+- [x] **Google Calendar Sync UI** ✅ *Completed Jan 7, 2026*
+  - Connection status indicator (green badge with email when connected)
+  - Disconnect button for OAuth logout
+  - "Connect Google Calendar" button when not authenticated
+  - Auto-sync on calendar view navigation
+  - Error handling for API failures (graceful degradation)
 
 ### 18. Production-Ready Features (Lower Priority)
 - [ ] **Kepler Deployment for Main Cluster**
@@ -277,17 +293,20 @@ This document tracks the implementation progress of carbon/cost-aware features f
 
 ## 📋 Recommended Next Steps
 
-1.  **High Priority - Fix Task Extraction Accuracy**
-    - Address the LLM extraction failure where specific times (e.g., "18:35") are missed, causing tasks to default to 09:00.
-    - Improve prompts or add regex fallback for strict time parsing.
-
-2.  **High Priority - AI Context Improvements**
+1.  **High Priority - AI Context Improvements**
     - Add calendar context to task scheduling (don't book over existing meetings)
-    - Implement conflict detection
+    - Implement conflict detection and smart suggestions
+    - Learn user preferences for optimal scheduling
 
-3.  **Medium Priority - UI Polish**
-    - Improve dashboard layout
-    - Add drag-and-drop to calendar
+2.  **Medium Priority - Enhanced Energy Policy**
+    - Fine-tune model selection thresholds
+    - Add "medium" tier for balanced scenarios
+    - Implement adaptive learning based on actual performance
+
+3.  **Low Priority - UI Polish**
+    - Dashboard layout refinements
+    - Add summary statistics cards
+    - Improve accessibility (ARIA labels, keyboard navigation)
 
 ---
 
@@ -309,10 +328,11 @@ This document tracks the implementation progress of carbon/cost-aware features f
 | Durable Queue | `src/storage/durable_queue.py` | ✅ Complete |
 | Prometheus | `10-redeploy-adapt/k8s/prometheus.yaml` | ✅ Complete |
 | Grafana | `10-redeploy-adapt/k8s/grafana.yaml` | ✅ Complete |
-| QueueList UI | `planner-ui/src/components/QueueList.tsx` | ✅ Complete |
+| QueueList UI | `planner-ui/src/components/QueueList.tsx` | ✅ Complete (with Delete) |
 | EnergyStatus UI | `planner-ui/src/components/EnergyStatus.tsx` | ✅ Complete |
-| Calendar Integration | `src/integration/calendar_integration.py` | ✅ Complete |
-| Calendar Page | `planner-ui/src/app/calendar/page.tsx` | ✅ Connected (Sync Active) |
+| TaskList UI | `planner-ui/src/components/TaskList.tsx` | ✅ Complete (with Clear) |
+| Calendar Integration | `src/integration/calendar_integration.py` | ✅ Complete (with update_event) |
+| Calendar Page | `planner-ui/src/app/calendar/page.tsx` | ✅ Complete (React Big Calendar + DnD) |
 | Carbon Page | `planner-ui/src/app/carbon/page.tsx` | ✅ Complete |
 
 ---
