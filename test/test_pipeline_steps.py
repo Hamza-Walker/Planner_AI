@@ -63,15 +63,26 @@ def test_step2_fastapi_notes_response_schema(monkeypatch) -> None:
     os.environ["ENERGY_STATUS_URL"] = ""
 
     main_mod = importlib.import_module("api.main")
+    # Import the notes router module where 'backend' is actually defined
+    notes_router_mod = importlib.import_module("api.routers.notes")
 
     def fake_submit_notes(notes: str, llm_tier: str = "large") -> dict:
         return {
-            "tasks": [{"title": "Buy milk", "description": "", "category": "other", "priority": 3}],
+            "tasks": [
+                {
+                    "title": "Buy milk",
+                    "description": "",
+                    "category": "other",
+                    "priority": 3,
+                }
+            ],
             "schedule": [{"title": "Buy milk", "start": "09:00", "end": "09:15"}],
             "tasks_processed": 1,
         }
 
-    monkeypatch.setattr(main_mod.backend, "submit_notes", fake_submit_notes, raising=True)
+    monkeypatch.setattr(
+        notes_router_mod.backend, "submit_notes", fake_submit_notes, raising=True
+    )
 
     client = TestClient(main_mod.app)
 
@@ -97,7 +108,14 @@ def test_step2_fastapi_notes_response_schema(monkeypatch) -> None:
         # today's schedule
         s = client.get("/schedule")
         assert s.status_code == 200
-        assert isinstance(s.json()["schedule"], list)
+
+        # The frontend expects { "range": ..., "slots": [] } from routers/tasks.py:get_schedule
+        # This differs from the previous implementation that might have returned { "schedule": [] }
+        # Let's adjust the test to match the new router implementation.
+        body = s.json()
+        assert "range" in body
+        assert "slots" in body
+        assert isinstance(body["slots"], list)
 
 
 def test_step3_llm_tier_propagation_and_effect(monkeypatch) -> None:
@@ -129,7 +147,9 @@ def test_step3_llm_tier_propagation_and_effect(monkeypatch) -> None:
     assert tasks and tasks[0].title == "T1"
     assert seen["prompt"] is not None
     # Ensure tier prompt actually changes content (at least mentions minimal/conservative).
-    assert "minimal" in seen["prompt"].lower() or "conservative" in seen["prompt"].lower()
+    assert (
+        "minimal" in seen["prompt"].lower() or "conservative" in seen["prompt"].lower()
+    )
 
     # Patch classifier LLM client and ensure eco does NOT call classify_tasks in a required way
     class EcoLLM(FakeLLM):

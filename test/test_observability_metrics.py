@@ -29,16 +29,27 @@ def test_notes_increments_request_counter(monkeypatch) -> None:
     os.environ["ENERGY_STATUS_URL"] = ""
 
     mod = _import_app()
+    # Import the notes router module where 'backend' is actually defined
+    notes_router_mod = importlib.import_module("api.routers.notes")
 
     # Monkeypatch backend to avoid any LLM/network calls and keep test deterministic.
     def fake_submit_notes(notes: str, llm_tier: str = "large") -> dict:
         return {
-            "tasks": [{"title": "Buy milk", "description": "", "category": "other", "priority": 3}],
+            "tasks": [
+                {
+                    "title": "Buy milk",
+                    "description": "",
+                    "category": "other",
+                    "priority": 3,
+                }
+            ],
             "schedule": [{"title": "Buy milk", "start": "09:00", "end": "09:15"}],
             "tasks_processed": 1,
         }
 
-    monkeypatch.setattr(mod.backend, "submit_notes", fake_submit_notes, raising=True)
+    monkeypatch.setattr(
+        notes_router_mod.backend, "submit_notes", fake_submit_notes, raising=True
+    )
 
     client = TestClient(mod.app)
 

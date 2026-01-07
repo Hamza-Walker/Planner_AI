@@ -110,7 +110,7 @@ export default function CalendarPage() {
   const handleMoveOrResize = useCallback(async ({ event, start, end }: any) => {
     try {
         await moveTask({
-            task_id: event.resource?.task?.id || event.title,
+            task_id: event.resource?.id || event.id || event.title,
             new_start: start.toISOString(),
             new_end: end.toISOString(),
             source: event.resource?.source || 'planner'
@@ -174,7 +174,7 @@ export default function CalendarPage() {
       const isGoogle = slot.source === 'google';
 
       return {
-        id: slot.calendar_event_id || `local-${idx}`,
+        id: slot.task?.id || `local-${idx}`,
         title: slot.task?.title || 'Untitled',
         start,
         end,
