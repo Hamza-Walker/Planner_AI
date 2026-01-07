@@ -10,12 +10,14 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Optional, List
 from dotenv import load_dotenv
-
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from fastapi import Response
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from codecarbon import EmissionsTracker
-
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from fastapi import Response
 from api.backend import BackendAPI
 from energy.policy import EnergyPolicy
 from energy.price_signal import EnergyStatus, fetch_energy_status
@@ -50,6 +52,41 @@ app.add_middleware(
 )
 
 backend = BackendAPI()
+# ============================================================================
+# Prometheus metrics (observability)
+# ============================================================================
+REQUESTS_TOTAL = Counter(
+    "planner_requests_total",
+    "Total number of HTTP requests",
+    ["endpoint", "status"],
+)
+
+REQUEST_LATENCY_SECONDS = Histogram(
+    "planner_request_latency_seconds",
+    "Request latency in seconds",
+    ["endpoint"],
+)
+
+TASKS_EXTRACTED_TOTAL = Counter(
+    "planner_tasks_extracted_total",
+    "Total number of extracted tasks",
+)
+
+TASKS_SCHEDULED_TOTAL = Counter(
+    "planner_tasks_scheduled_total",
+    "Total number of scheduled tasks",
+)
+
+LLM_TIER_TOTAL = Counter(
+    "planner_llm_tier_total",
+    "Number of times a given LLM tier was used",
+    ["tier"],
+)
+
+QUEUE_DEPTH = Gauge(
+    "planner_queue_depth",
+    "Current notes queue size (pending items)",
+)
 
 # In-memory store for recent tasks and schedules (last 50)
 recent_tasks: deque = deque(maxlen=50)
@@ -279,31 +316,63 @@ async def _queue_worker() -> None:
 
 @app.post("/notes")
 async def submit_notes(payload: NotesIn) -> dict:
+    start = time.time()
     logger.info(f"Received notes submission: {payload.notes[:50]}...")
+
     status = await _get_energy_status()
     llm_tier = policy.llm_tier(status)
 
+    # Count which LLM tier was selected for this request (best-effort)
+    try:
+        LLM_TIER_TOTAL.labels(tier=llm_tier).inc()
+    except Exception:
+        pass
+
     if policy.should_process_now(status):
         logger.info(f"Processing notes immediately (Tier: {llm_tier})")
+
         try:
             result = await _process_notes(payload.notes, llm_tier=llm_tier)
             logger.info(f"Notes processed successfully. Tasks found: {len(result.get('tasks', []))}")
         except Exception as e:
             logger.error(f"Error processing notes: {e}")
+            # Optionally count failures separately later; for now we keep behavior identical.
             raise
-        
+
         # Store tasks and schedule for later retrieval
-        if "tasks" in result and result["tasks"]:
-            for task in result["tasks"]:
+        tasks_out = result.get("tasks", []) or []
+        schedule_out = result.get("schedule", []) or []
+
+        if tasks_out:
+            for task in tasks_out:
                 task["created_at"] = datetime.now().isoformat()
                 recent_tasks.appendleft(task)
-        if "schedule" in result and result["schedule"]:
+
+        if schedule_out:
             date_str = datetime.now().strftime("%Y-%m-%d")
-            recent_schedules[date_str] = result["schedule"]
-        
-        # Force update of carbon metrics
-        if hasattr(tracker, 'flush'):
-            tracker.flush()
+            recent_schedules[date_str] = schedule_out
+
+        # Prometheus counters (best-effort)
+        try:
+            REQUESTS_TOTAL.labels(endpoint="/notes", status="processed").inc()
+            REQUEST_LATENCY_SECONDS.labels(endpoint="/notes").observe(time.time() - start)
+            TASKS_EXTRACTED_TOTAL.inc(len(tasks_out))
+            TASKS_SCHEDULED_TOTAL.inc(len(schedule_out))
+
+            # Queue depth gauge (durable vs in-memory)
+            if USE_DURABLE_QUEUE and durable_queue is not None:
+                QUEUE_DEPTH.set(await durable_queue.get_pending_count())
+            else:
+                QUEUE_DEPTH.set(notes_queue.qsize())
+        except Exception:
+            pass
+
+        # Force update of carbon metrics (best-effort)
+        try:
+            if hasattr(tracker, "flush"):
+                tracker.flush()
+        except Exception:
+            pass
 
         return {
             "status": "processed",
@@ -322,7 +391,15 @@ async def submit_notes(payload: NotesIn) -> dict:
             llm_tier=llm_tier,
         )
         pending_count = await durable_queue.get_pending_count()
-        
+
+        # Prometheus counters (best-effort)
+        try:
+            REQUESTS_TOTAL.labels(endpoint="/notes", status="queued").inc()
+            REQUEST_LATENCY_SECONDS.labels(endpoint="/notes").observe(time.time() - start)
+            QUEUE_DEPTH.set(pending_count)
+        except Exception:
+            pass
+
         return {
             "status": "queued",
             "queue_item_id": item_id,
@@ -331,16 +408,27 @@ async def submit_notes(payload: NotesIn) -> dict:
             "queue_type": "durable",
             "energy": _serialize_status(status),
         }
-    else:
-        # Fallback to in-memory queue
-        await notes_queue.put(payload.notes)
-        return {
-            "status": "queued",
-            "llm_tier": llm_tier,
-            "queue_size": notes_queue.qsize(),
-            "queue_type": "in-memory",
-            "energy": _serialize_status(status),
-        }
+
+    # Fallback to in-memory queue
+    await notes_queue.put(payload.notes)
+
+    # Prometheus counters (best-effort)
+    try:
+        REQUESTS_TOTAL.labels(endpoint="/notes", status="queued").inc()
+        REQUEST_LATENCY_SECONDS.labels(endpoint="/notes").observe(time.time() - start)
+        QUEUE_DEPTH.set(notes_queue.qsize())
+    except Exception:
+        pass
+
+    return {
+        "status": "queued",
+        "llm_tier": llm_tier,
+        "queue_size": notes_queue.qsize(),
+        "queue_type": "in-memory",
+        "energy": _serialize_status(status),
+    }
+
+
 
 
 @app.get("/queue")
@@ -406,6 +494,22 @@ async def health_check() -> dict:
         health["queue_size"] = notes_queue.qsize()
     
     return health
+
+@app.get("/metrics")
+async def metrics() -> Response:
+    """
+    Prometheus scrape endpoint.
+    """
+    try:
+        if USE_DURABLE_QUEUE and durable_queue is not None:
+            QUEUE_DEPTH.set(await durable_queue.get_pending_count())
+        else:
+            QUEUE_DEPTH.set(notes_queue.qsize())
+    except Exception:
+        pass
+
+    data = generate_latest()
+    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/tasks")

@@ -115,13 +115,18 @@ NOTE TEXT:
         # logger.info(f"Using model: {model_name} for tier: {llm_tier}")
 
         try:
-            raw = self.provider.generate(system=system, user=user, model=model_name)
+            try:
+                raw = self.provider.generate(system=system, user=user, model=model_name)
+            except TypeError:
+                # FakeProvider doesn't accept `model`
+                raw = self.provider.generate(system=system, user=user)
+
             json_text = _extract_json(raw)
             parsed = TaskExtractionResult.model_validate_json(json_text)
             return [t.model_dump() for t in parsed.tasks]
-        except (ValidationError, json.JSONDecodeError, Exception) as e:
+
+        except (ValidationError, json.JSONDecodeError) as e:
             logger.error(f"Error extracting tasks: {e}. Raw output: {raw if 'raw' in locals() else 'N/A'}")
-            # safe fallback: no tasks
             return []
 
 
@@ -160,7 +165,10 @@ TASKS:
         model_name = self.large_model if llm_tier == "large" else self.small_model
 
         try:
-            raw = self.provider.generate(system=system, user=user, model=model_name)
+            try:
+                raw = self.provider.generate(system=system, user=user, model=model_name)
+            except TypeError:
+                raw = self.provider.generate(system=system, user=user)
             json_text = _extract_json(raw)
             parsed = TaskClassificationResult.model_validate_json(json_text)
             return [t.model_dump() for t in parsed.tasks]

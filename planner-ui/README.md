@@ -7,7 +7,19 @@ Web interface for the Planner AI project, built with Next.js 14, TypeScript, and
 - **Dashboard**: Submit daily notes, view energy status, and recent tasks.
 - **Calendar**: Visual timeline of scheduled tasks.
 - **Sustainability**: Track carbon emissions and energy-aware decisions.
+## Requirements
 
+To run this project locally, you need:
+
+- Kubernetes cluster (tested with **Docker Desktop Kubernetes** or **Minikube**)
+- kubectl
+- Helm v3+
+- Docker
+
+Monitoring stack:
+- Prometheus & Grafana installed via **kube-prometheus-stack (Helm chart)**
+
+The backend exposes Prometheus metrics at `/metrics`.
 ## Prerequisites
 
 - Node.js 18+
