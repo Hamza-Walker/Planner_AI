@@ -6,3 +6,9 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["planner-ai-backend:8000"]
+
+  - job_name: "kepler"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["kepler.kepler-system.svc.cluster.local:9103"]
+    scrape_interval: 5s

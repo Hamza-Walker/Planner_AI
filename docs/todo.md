@@ -255,9 +255,13 @@ This document tracks the implementation progress of carbon/cost-aware features f
   - Error handling for API failures (graceful degradation)
 
 ### 18. Production-Ready Features (Lower Priority)
-- [ ] **Kepler Deployment for Main Cluster**
-  - Add Kepler Helm install to main project setup
-  - Create dedicated namespace and RBAC
+- [x] **Kepler Deployment for Main Cluster** ✅ *Completed Jan 7, 2026*
+  - Installed Kepler via Helm in dedicated `kepler-system` namespace
+  - Created `k8s/kepler-values.yaml` for configuration
+  - Integrated with Prometheus for metrics scraping
+  - Added comprehensive deployment guide (`docs/kepler-deployment.md`)
+  - Verified metrics collection (container/node energy metrics)
+
 
 - [ ] **Grafana Dashboards**
   - Create custom dashboards for Planner_AI metrics
@@ -334,6 +338,7 @@ This document tracks the implementation progress of carbon/cost-aware features f
 | Calendar Integration | `src/integration/calendar_integration.py` | ✅ Complete (with update_event) |
 | Calendar Page | `planner-ui/src/app/calendar/page.tsx` | ✅ Complete (React Big Calendar + DnD) |
 | Carbon Page | `planner-ui/src/app/carbon/page.tsx` | ✅ Complete |
+| Kepler Deployment | `k8s/kepler-values.yaml`, `docs/kepler-deployment.md` | ✅ Complete |
 
 ---
 
