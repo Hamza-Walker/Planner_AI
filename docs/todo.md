@@ -263,16 +263,22 @@ This document tracks the implementation progress of carbon/cost-aware features f
   - Verified metrics collection (container/node energy metrics)
 
 
-- [ ] **Grafana Dashboards**
+- [x] **Grafana Dashboards**
   - Create custom dashboards for Planner_AI metrics
   - Combine energy metrics with task processing stats
   - Cost calculation panels (energy × price)
 
 ### 19. Documentation & Testing
-- [ ] **Update main README.md**
-  - Document energy-aware features
-  - Add setup instructions for price simulator
-  - Include Kepler/CodeCarbon setup
+- [x] **Update main README.md** ✅ *Completed Jan 7, 2026*
+  - Documented all energy-aware features (dynamic model selection, queue system, carbon tracking)
+  - Added comprehensive setup instructions for price simulator
+  - Included Kepler/Helm/Prometheus/CodeCarbon setup with step-by-step guide
+  - Detailed instructions for building Docker images (backend, frontend, price simulator)
+  - Complete pod deployment workflow with verification steps
+  - Added Google Calendar OAuth setup instructions
+  - Troubleshooting section for common issues
+  - Development workflow and local testing guide
+ 
 
 - [ ] **Integration Tests**
   - Test energy policy behavior
@@ -280,15 +286,15 @@ This document tracks the implementation progress of carbon/cost-aware features f
   - Test model tier selection
 
 ### 20. Advanced Features (from Session 2)
-- [ ] **Horizontal Auto-scaling**
+- [x] **Horizontal Auto-scaling**
   - Scale replicas based on energy availability
   - Reduce capacity during expensive periods
 
-- [ ] **Batch Processing Support**
+- [x] **Batch Processing Support**
   - Queue non-urgent tasks for overnight processing
   - Schedule batch jobs during low-carbon periods
 
-- [ ] **Carbon Intensity API Integration**
+- [x] **Carbon Intensity API Integration**
   - Replace/supplement price simulator with real data
   - Integrate with Electricity Maps API
   - Region-aware scheduling
