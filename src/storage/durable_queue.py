@@ -400,3 +400,15 @@ class DurableQueue:
             logger.info(f"Purged {count} completed items older than {older_than_hours} hours")
         
         return count
+    
+    async def delete_item(self, item_id: str) -> bool:
+        """Permanently remove an item from the queue."""
+        pool = await db.get_pool()
+        query = "DELETE FROM queue_items WHERE id = $1"
+        try:
+             result = await pool.execute(query, item_id)
+             # execute returns e.g. "DELETE 1"
+             return "DELETE 1" in result
+        except Exception as e:
+            logger.error(f"Failed to delete item {item_id}: {e}")
+            return False

@@ -1,9 +1,9 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { getTasks } from '@/lib/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { getTasks, clearRecentTasks } from '@/lib/api';
 import { Task, CATEGORY_ICONS } from '@/lib/types';
-import { Clock, Flag } from 'lucide-react';
+import { Clock, Flag, Trash2 } from 'lucide-react';
 
 const categoryColors: Record<string, string> = {
   work: 'bg-blue-100 text-blue-700 border-blue-200',
@@ -48,11 +48,19 @@ function TaskCard({ task }: { task: Task }) {
 }
 
 export function TaskList() {
+  const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ['tasks'],
     queryFn: () => getTasks(20),
     refetchInterval: 10000, // Poll every 10 seconds
   });
+
+  const handleClear = async () => {
+    if (confirm('Clear recent tasks?')) {
+        await clearRecentTasks();
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    }
+  };
 
   if (isLoading) {
     return (
@@ -84,7 +92,18 @@ export function TaskList() {
     <div className="bg-white rounded-lg shadow p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-gray-900">📋 Recent Tasks</h3>
-        <span className="text-sm text-gray-500">{data?.total ?? 0} total</span>
+        <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-500">{data?.total ?? 0} total</span>
+            {tasks.length > 0 && (
+                <button 
+                  onClick={handleClear} 
+                  className="text-gray-400 hover:text-red-500 transition-colors"
+                  title="Clear All"
+                >
+                    <Trash2 className="w-4 h-4" />
+                </button>
+            )}
+        </div>
       </div>
       
       {tasks.length === 0 ? (

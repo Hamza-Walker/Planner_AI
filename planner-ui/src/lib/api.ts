@@ -53,19 +53,28 @@ export async function getQueueItems(limit: number = 20): Promise<QueueItemsRespo
   return fetchApi<QueueItemsResponse>(`/queue/items?limit=${limit}`);
 }
 
+export async function deleteQueueItem(id: string): Promise<any> {
+    return fetchApi<any>(`/queue/items/${id}`, {
+        method: 'DELETE',
+    });
+}
+
 // GET /tasks - Get recent extracted tasks
 export async function getTasks(limit: number = 20): Promise<TasksResponse> {
   return fetchApi<TasksResponse>(`/tasks?limit=${limit}`);
 }
 
-// GET /schedule - Get today's schedule
-export async function getTodaySchedule(): Promise<ScheduleResponse> {
-  return fetchApi<ScheduleResponse>('/schedule');
+// GET /schedule - Get schedule for a range (default today)
+export async function getSchedule(start?: string, end?: string): Promise<ScheduleResponse> {
+  const params = new URLSearchParams();
+  if (start) params.append('start_date', start);
+  if (end) params.append('end_date', end);
+  return fetchApi<ScheduleResponse>(`/schedule?${params.toString()}`);
 }
 
-// GET /schedule/:date - Get schedule for a specific date
-export async function getSchedule(date: string): Promise<ScheduleResponse> {
-  return fetchApi<ScheduleResponse>(`/schedule/${date}`);
+// Legacy alias for compatibility
+export async function getTodaySchedule(): Promise<ScheduleResponse> {
+  return getSchedule();
 }
 
 // GET /health - Health check
@@ -76,4 +85,34 @@ export async function getHealth(): Promise<HealthResponse> {
 // GET /metrics/carbon - Carbon emissions metrics
 export async function getCarbonMetrics(): Promise<CarbonMetrics> {
   return fetchApi<CarbonMetrics>('/metrics/carbon');
+}
+
+export async function moveTask(payload: {
+  task_id: string;
+  new_start: string;
+  new_end: string;
+  source: string;
+}): Promise<any> {
+  return fetchApi<any>('/schedule/move', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function clearRecentTasks(): Promise<any> {
+    return fetchApi<any>('/tasks/queue', {
+        method: 'DELETE',
+    });
+}
+
+export async function createTask(payload: {
+    title: string;
+    start_time: string;
+    end_time: string;
+    category?: string;
+}): Promise<any> {
+    return fetchApi<any>('/tasks/create', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
 }

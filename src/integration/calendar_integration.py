@@ -174,3 +174,22 @@ class CalendarIntegration:
         except Exception as e:
             logger.warning(f"Failed to fetch calendar timezone: {e}")
             return "UTC"
+
+    async def update_event(self, event_id: str, patch_data: dict) -> dict:
+        """
+        Update an existing event with patch semantics.
+        """
+        if build is None or self.credentials is None:
+            raise RuntimeError("Google Calendar API not available")
+
+        # Running blocking call in executor if needed, but for now direct is ok 
+        # as this is usually called from async loop wrapper or simple endpoint.
+        # Actually Google client is blocking.
+        
+        service = build("calendar", "v3", credentials=self.credentials)
+        updated_event = service.events().patch(
+            calendarId=self.calendar_id,
+            eventId=event_id,
+            body=patch_data
+        ).execute()
+        return updated_event

@@ -16,7 +16,9 @@ class EnergyPolicy:
     def should_process_now(self, status: Optional[EnergyStatus]) -> bool:
         """Whether to process a note immediately.
 
-        Planner_AI is typically tolerant to delays, so when energy is expensive we can queue.
+        Solar -> Process Immediately (Large Model)
+        No Solar + Low Price -> Process Immediately (Small Model)
+        No Solar + High Price -> Queue
         """
         if status is None:
             return self.fail_open
@@ -30,5 +32,7 @@ class EnergyPolicy:
         return status.electricity_price_eur < self.price_threshold_eur
 
     def llm_tier(self, status: Optional[EnergyStatus]) -> str:
-        """Return a coarse model tier: 'large' when energy is cheap, otherwise 'small'."""
-        return "large" if self.should_process_now(status) else "small"
+        """Return 'large' if solar is available, otherwise 'small'."""
+        if status and status.solar_available is True:
+            return "large"
+        return "small"
