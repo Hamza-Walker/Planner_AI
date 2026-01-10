@@ -79,7 +79,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/planner_ai
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -133,8 +133,8 @@ jobs:
           file: ./Dockerfile.fast
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:fast
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:fast-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/planner_ai:fast
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/planner_ai:fast-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
